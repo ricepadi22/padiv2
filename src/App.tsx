@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AuthProvider, useAuth } from "./context/AuthContext.tsx";
 import { LiveUpdatesProvider } from "./context/LiveUpdatesContext.tsx";
+import { PadiProvider } from "./context/PadiContext.tsx";
 import { AppLayout } from "./components/AppLayout.tsx";
 import { LoginPage } from "./pages/LoginPage.tsx";
 import { SignupPage } from "./pages/SignupPage.tsx";
@@ -32,9 +33,11 @@ export default function App() {
               path="/"
               element={
                 <RequireAuth>
-                  <LiveUpdatesProvider>
-                    <AppLayout />
-                  </LiveUpdatesProvider>
+                  <PadiProvider>
+                    <LiveUpdatesProvider>
+                      <AppLayout />
+                    </LiveUpdatesProvider>
+                  </PadiProvider>
                 </RequireAuth>
               }
             >

@@ -31,7 +31,7 @@ export function RoomPage() {
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
   const [showInviteAgent, setShowInviteAgent] = useState(false);
   const [showDispatch, setShowDispatch] = useState(false);
-  const [activeTab, setActiveTab] = useState<"chat" | "tickets">("chat");
+  const [activeTab, setActiveTab] = useState<"chat" | "tickets">("tickets");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const { data: roomData } = useQuery({
@@ -87,6 +87,7 @@ export function RoomPage() {
   const members = roomData?.members ?? [];
   const messages = messagesData?.messages ?? [];
 
+  const activeMembers = members.filter((m) => !m.leftAt);
   const myMember = members.find((m) => m.userId === user?.id);
   const isObserver = myMember?.role === "observer";
   const canInviteAgents = room?.world !== "higher";
@@ -120,9 +121,12 @@ export function RoomPage() {
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
-          <div className="flex items-center gap-1 text-xs text-zinc-400 mr-1">
+          <div
+            className="flex items-center gap-1 text-xs text-zinc-400 mr-1"
+            title={activeMembers.map((m) => m.displayName ?? (m.memberType === "bot" ? "Agent" : "User")).join(", ")}
+          >
             <Users className="w-3.5 h-3.5" />
-            <span>{members.filter((m) => !m.leftAt).length}</span>
+            <span>{activeMembers.length}</span>
           </div>
           {room?.world === "middle" && (
             <button
@@ -220,7 +224,9 @@ export function RoomPage() {
                       ? "System"
                       : msg.authorUserId === user?.id
                       ? (user?.displayName ?? "You")
-                      : `User ${msg.authorUserId?.slice(0, 6)}`
+                      : (members.find((m) => m.userId === msg.authorUserId)?.displayName
+                        ?? members.find((m) => m.botId === msg.authorBotId)?.displayName
+                        ?? `User ${msg.authorUserId?.slice(0, 6)}`)
                   }
                 />
               ))

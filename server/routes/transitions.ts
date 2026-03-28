@@ -26,11 +26,12 @@ router.post("/step-away", requireAuth, requireHuman, async (req: AuthRequest, re
     return;
   }
 
-  // Create a Higher World private room
+  // Create a Higher World private room, inheriting padiId from the Middle room
   const [higherRoom] = await db.insert(rooms).values({
     world: "higher",
     name: `Private: ${fromRoom.name}`,
     description: `Private discussion from ${fromRoom.name}`,
+    padiId: fromRoom.padiId ?? undefined,
     createdByUserId: req.user!.id,
     metadata: { linkedMiddleRoomId: fromRoom.id },
   }).returning();
@@ -115,13 +116,14 @@ router.post("/send-to-work", requireAuth, requireHuman, async (req: AuthRequest,
     return;
   }
 
-  const [fromRoom] = await db.select().from(rooms).where(eq(parsed.data.fromRoomId ? eq(rooms.id, parsed.data.fromRoomId) : eq(rooms.id, ""))).limit(1);
+  const [fromRoom] = await db.select().from(rooms).where(eq(rooms.id, parsed.data.fromRoomId)).limit(1);
 
-  // Create a Worker World room
+  // Create a Worker World room, inheriting padiId from the Middle room
   const [workerRoom] = await db.insert(rooms).values({
     world: "worker",
     name: parsed.data.name || `Work: ${parsed.data.taskDescription.slice(0, 50)}`,
     description: parsed.data.taskDescription,
+    padiId: fromRoom?.padiId ?? undefined,
     createdByUserId: req.user!.id,
     metadata: { linkedMiddleRoomId: parsed.data.fromRoomId, dispatchedBy: req.user!.id },
   }).returning();

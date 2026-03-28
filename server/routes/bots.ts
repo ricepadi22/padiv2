@@ -15,9 +15,11 @@ router.get("/providers", requireAuth, requireHuman, (_req, res) => {
   res.json({ providers: listProviders() });
 });
 
-// List bots
-router.get("/", requireAuth, async (_req, res) => {
-  const result = await db.select().from(bots).where(eq(bots.status, "active"));
+// List bots — only the current user's own bots
+router.get("/", requireAuth, async (req: AuthRequest, res) => {
+  const result = await db.select().from(bots).where(
+    and(eq(bots.status, "active"), eq(bots.ownerUserId, req.user!.id))
+  );
   res.json({ bots: result.map(safeBotObj) });
 });
 

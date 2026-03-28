@@ -2,7 +2,7 @@ import { Router } from "express";
 import { eq, and, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/client.js";
-import { rooms, roomMembers } from "../db/schema/index.js";
+import { rooms, roomMembers, users, bots, padis } from "../db/schema/index.js";
 import { requireAuth, requireHuman, type AuthRequest } from "../middleware/auth.js";
 
 const router = Router();
@@ -28,7 +28,7 @@ router.post("/", requireAuth, requireHuman, async (req: AuthRequest, res) => {
     world: z.enum(["higher", "middle", "worker"]),
     name: z.string().min(1).max(100),
     description: z.string().optional(),
-    padiId: z.string().uuid().optional(), // only for Higher World rooms
+    padiId: z.string().uuid().optional(), // scopes room to a padi (all worlds)
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
@@ -49,18 +49,42 @@ router.post("/", requireAuth, requireHuman, async (req: AuthRequest, res) => {
     role: "owner",
   });
 
+  // Auto-add padi host bot to Higher World rooms only
+  if (parsed.data.world === "higher" && parsed.data.padiId) {
+    const [padi] = await db.select({ hostBotId: padis.hostBotId }).from(padis).where(eq(padis.id, parsed.data.padiId)).limit(1);
+    if (padi?.hostBotId) {
+      await db.insert(roomMembers).values({
+        roomId: room!.id, memberType: "bot", botId: padi.hostBotId, role: "participant",
+      });
+    }
+  }
+
   res.status(201).json({ room });
 });
 
-// Get room details + members
+// Get room details + members (with display names)
 router.get("/:id", requireAuth, async (req: AuthRequest, res) => {
   const [room] = await db.select().from(rooms).where(eq(rooms.id, req.params.id!)).limit(1);
   if (!room) {
     res.status(404).json({ error: "Room not found" });
     return;
   }
-  const members = await db.select().from(roomMembers).where(
+  const rawMembers = await db.select().from(roomMembers).where(
     and(eq(roomMembers.roomId, room.id), isNull(roomMembers.leftAt))
+  );
+  // Resolve display names from users/bots tables
+  const members = await Promise.all(
+    rawMembers.map(async (m) => {
+      let displayName: string | undefined;
+      if (m.userId) {
+        const [u] = await db.select({ displayName: users.displayName }).from(users).where(eq(users.id, m.userId)).limit(1);
+        displayName = u?.displayName;
+      } else if (m.botId) {
+        const [b] = await db.select({ displayName: bots.displayName }).from(bots).where(eq(bots.id, m.botId)).limit(1);
+        displayName = b?.displayName;
+      }
+      return { ...m, displayName };
+    })
   );
   res.json({ room, members });
 });
@@ -99,15 +123,24 @@ router.post("/:id/members", requireAuth, requireHuman, async (req: AuthRequest, 
     return;
   }
 
-  // Enforce Higher World rule: no bots
+  // Enforce Higher World rule: only the padi host bot is allowed
   const [room] = await db.select().from(rooms).where(eq(rooms.id, req.params.id!)).limit(1);
   if (!room) {
     res.status(404).json({ error: "Room not found" });
     return;
   }
   if (room.world === "higher" && parsed.data.memberType === "bot") {
-    res.status(403).json({ error: "Bots are not allowed in Higher World" });
-    return;
+    // Allow only the padi's designated host bot
+    if (room.padiId && parsed.data.botId) {
+      const [padi] = await db.select({ hostBotId: padis.hostBotId }).from(padis).where(eq(padis.id, room.padiId)).limit(1);
+      if (!padi || padi.hostBotId !== parsed.data.botId) {
+        res.status(403).json({ error: "Only the padi AI host can be added to Higher World rooms" });
+        return;
+      }
+    } else {
+      res.status(403).json({ error: "Bots are not allowed in Higher World" });
+      return;
+    }
   }
   // Worker World: humans can only join as observer
   if (room.world === "worker" && parsed.data.memberType === "human" && parsed.data.role === "participant") {

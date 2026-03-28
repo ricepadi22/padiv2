@@ -74,7 +74,7 @@ export function RoomList({ rooms, world, onCreateRoom, emptyMessage }: RoomListP
                 <Archive className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
               )}
               <button
-                onClick={(e) => { e.preventDefault(); archiveRoom.mutate(room.id); }}
+                onClick={(e) => { e.preventDefault(); if (confirm(`Archive "${room.name}"?`)) archiveRoom.mutate(room.id); }}
                 className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-red-600 transition-all shrink-0"
                 title="Archive room"
               >

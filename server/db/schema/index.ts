@@ -9,3 +9,4 @@ export { transitions } from "./transitions.ts";
 export { padis, padiMembers } from "./padis.ts";
 export { tickets, ticketActivity } from "./tickets.ts";
 export { inviteTokens } from "./inviteTokens.ts";
+export { joinRequests } from "./joinRequests.ts";

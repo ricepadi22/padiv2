@@ -24,13 +24,19 @@ export interface RoomMember {
   userId?: string;
   botId?: string;
   role: MemberRole;
+  displayName?: string;
   joinedAt: string;
   leftAt?: string;
 }
 
 export const roomsApi = {
-  list: (world?: WorldType) =>
-    apiFetch<{ rooms: Room[] }>(`/api/rooms${world ? `?world=${world}` : ""}`),
+  list: (world?: WorldType, padiId?: string) => {
+    const params = new URLSearchParams();
+    if (world) params.set("world", world);
+    if (padiId) params.set("padiId", padiId);
+    const qs = params.toString();
+    return apiFetch<{ rooms: Room[] }>(`/api/rooms${qs ? `?${qs}` : ""}`);
+  },
 
   get: (id: string) =>
     apiFetch<{ room: Room; members: RoomMember[] }>(`/api/rooms/${id}`),
