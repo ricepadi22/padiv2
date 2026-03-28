@@ -5,6 +5,7 @@ interface AvatarDisplayProps {
   avatarUrl?: string;
   authorType: AuthorType;
   size?: "sm" | "md";
+  showLabel?: boolean;
 }
 
 const avatarPalette = [
@@ -28,13 +29,25 @@ function avatarColor(name: string): string {
   return avatarPalette[hash % avatarPalette.length]!;
 }
 
-const botBadge = "bg-purple-100 text-purple-700";
-const humanBadge = "bg-zinc-100 text-zinc-600";
+export const botBadge = "bg-purple-100 text-purple-700";
+export const humanBadge = "bg-zinc-100 text-zinc-600";
 
-export function AvatarDisplay({ displayName, avatarUrl, authorType, size = "md" }: AvatarDisplayProps) {
+export function AvatarDisplay({ displayName, avatarUrl, authorType, size = "md", showLabel = true }: AvatarDisplayProps) {
   const initials = displayName.slice(0, 2).toUpperCase();
   const sizeClass = size === "sm" ? "w-7 h-7 text-[10px]" : "w-8 h-8 text-xs";
   const color = avatarColor(displayName);
+
+  if (!showLabel) {
+    return (
+      <div className={`${sizeClass} rounded-full flex items-center justify-center font-semibold text-white shrink-0 overflow-hidden ${color}`}>
+        {avatarUrl ? (
+          <img src={avatarUrl} alt={displayName} className="w-full h-full object-cover" />
+        ) : (
+          <span>{initials}</span>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-2">

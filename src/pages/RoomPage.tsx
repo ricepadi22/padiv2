@@ -215,21 +215,40 @@ export function RoomPage() {
                 No messages yet
               </div>
             ) : (
-              messages.map((msg) => (
-                <MessageBubble
-                  key={msg.id}
-                  message={msg}
-                  authorName={
-                    msg.authorType === "system"
-                      ? "System"
-                      : msg.authorUserId === user?.id
-                      ? (user?.displayName ?? "You")
-                      : (members.find((m) => m.userId === msg.authorUserId)?.displayName
-                        ?? members.find((m) => m.botId === msg.authorBotId)?.displayName
-                        ?? `User ${msg.authorUserId?.slice(0, 6)}`)
-                  }
-                />
-              ))
+              messages.map((msg, idx) => {
+                const prev = idx > 0 ? messages[idx - 1] : null;
+                const isOwnMessage = msg.authorUserId === user?.id;
+                const isSameAuthor = prev
+                  && prev.authorType !== "system"
+                  && msg.authorType !== "system"
+                  && ((prev.authorUserId && prev.authorUserId === msg.authorUserId)
+                    || (prev.authorBotId && prev.authorBotId === msg.authorBotId));
+                // Collapse if same author within 5 minutes
+                const isConsecutive = isSameAuthor
+                  && (new Date(msg.createdAt).getTime() - new Date(prev!.createdAt).getTime()) < 5 * 60 * 1000;
+
+                let authorName: string;
+                if (msg.authorType === "system") {
+                  authorName = "System";
+                } else if (msg.authorBotId) {
+                  authorName = members.find((m) => m.botId === msg.authorBotId)?.displayName ?? "Agent";
+                } else if (isOwnMessage) {
+                  authorName = user?.displayName ?? "You";
+                } else {
+                  authorName = members.find((m) => m.userId === msg.authorUserId)?.displayName
+                    ?? `User ${msg.authorUserId?.slice(0, 6) ?? ""}`;
+                }
+
+                return (
+                  <MessageBubble
+                    key={msg.id}
+                    message={msg}
+                    authorName={authorName}
+                    isOwnMessage={isOwnMessage}
+                    isConsecutive={!!isConsecutive}
+                  />
+                );
+              })
             )}
             <div ref={bottomRef} />
           </div>
