@@ -11,10 +11,10 @@ export async function routeMessageToBots(message: Message, room: Room): Promise<
   // Higher World is humans-only — no bot routing
   if (room.world === "higher") return;
 
-  // Route human messages in all worlds, and bot messages in Middle World (agent-to-agent)
+  // Route human messages everywhere; bot messages in Middle and Worker (agent-to-agent + CEO-to-host)
   const isHumanMessage = message.authorType === "human";
-  const isBotToBot = message.authorBotId && room.world === "middle";
-  if (!isHumanMessage && !isBotToBot) return;
+  const isBotMessage = !!message.authorBotId && (room.world === "middle" || room.world === "worker");
+  if (!isHumanMessage && !isBotMessage) return;
 
   // Find all active bot members in this room
   const members = await db

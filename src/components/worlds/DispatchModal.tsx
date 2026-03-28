@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { X, Send, Bot, Zap } from "lucide-react";
+import { X, Send, Bot, Zap, Crown } from "lucide-react";
 import { transitionsApi } from "../../api/transitions.ts";
 import { roomsApi } from "../../api/rooms.ts";
 import { padisApi } from "../../api/padis.ts";
@@ -22,6 +22,10 @@ export function DispatchModal({ roomId, onClose }: DispatchModalProps) {
   });
 
   const padiId = roomData?.room.padiId;
+  const members = roomData?.members ?? [];
+
+  // Personal bots in this room = the CEOs
+  const ceoBots = members.filter((m) => m.memberType === "bot" && m.botId);
 
   const { data: padiData } = useQuery({
     queryKey: ["padi", padiId],
@@ -39,7 +43,7 @@ export function DispatchModal({ roomId, onClose }: DispatchModalProps) {
     },
   });
 
-  const canSubmit = taskDescription.trim().length > 0 && !!hostBot;
+  const canSubmit = taskDescription.trim().length > 0 && (ceoBots.length > 0 || !!hostBot);
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
@@ -55,19 +59,37 @@ export function DispatchModal({ roomId, onClose }: DispatchModalProps) {
         </div>
 
         <div className="px-5 py-4 space-y-4">
-          {/* AI Host indicator */}
-          {hostBot ? (
-            <div className="flex items-center gap-2.5 px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-xl">
-              <Bot className="w-4 h-4 text-blue-500 shrink-0" />
+          {/* CEO bots (personal agents in room) */}
+          {ceoBots.length > 0 ? (
+            <div className="flex items-start gap-2.5 px-3 py-2.5 bg-purple-50 border border-purple-200 rounded-xl">
+              <Crown className="w-4 h-4 text-purple-500 shrink-0 mt-0.5" />
               <div className="min-w-0">
-                <p className="text-xs font-medium text-blue-900">{hostBot.displayName} will orchestrate</p>
-                <p className="text-[11px] text-blue-600">Your padi's AI host will spawn worker bots as needed</p>
+                <p className="text-xs font-medium text-purple-900">
+                  {ceoBots.map((b) => b.displayName ?? "Agent").join(", ")} will lead as CEO
+                </p>
+                <p className="text-[11px] text-purple-600">Your personal agent drives the work and directs the team</p>
               </div>
             </div>
           ) : (
             <div className="flex items-center gap-2.5 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
-              <Zap className="w-4 h-4 text-amber-500 shrink-0" />
-              <p className="text-xs text-amber-800">No AI host configured. Set one up in Higher World → AI Host tab first.</p>
+              <Crown className="w-4 h-4 text-amber-500 shrink-0" />
+              <p className="text-xs text-amber-800">No personal agent in this room. Add your agent to act as CEO, or use the padi AI host.</p>
+            </div>
+          )}
+
+          {/* AI Host (worker spawner) */}
+          {hostBot ? (
+            <div className="flex items-center gap-2.5 px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-xl">
+              <Bot className="w-4 h-4 text-blue-500 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-blue-900">{hostBot.displayName} — padi AI host</p>
+                <p className="text-[11px] text-blue-600">Spawns worker bots on demand for the CEO</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2.5 px-3 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl">
+              <Zap className="w-4 h-4 text-zinc-400 shrink-0" />
+              <p className="text-xs text-zinc-500">No padi AI host configured (optional). Set one up in Higher World → AI Host tab.</p>
             </div>
           )}
 
@@ -78,7 +100,7 @@ export function DispatchModal({ roomId, onClose }: DispatchModalProps) {
               autoFocus
               value={taskDescription}
               onChange={(e) => setTaskDescription(e.target.value)}
-              placeholder="Describe the goal for the AI host to work on..."
+              placeholder="Describe the goal for your agents to work on..."
               rows={3}
               className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 resize-none"
             />

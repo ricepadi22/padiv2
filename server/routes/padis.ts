@@ -362,7 +362,7 @@ router.post("/:id/host", requireAuth, requireHuman, async (req: AuthRequest, res
   // Build default system prompt if not provided
   const config = (parsed.data.providerConfig ?? {}) as Record<string, unknown>;
   if (!config.systemPrompt) {
-    config.systemPrompt = `You are ${parsed.data.displayName}, the AI host of the "${padi.name}" community in Higher World. You help community members, answer questions, and foster a welcoming environment. Be concise, friendly, and helpful.`;
+    config.systemPrompt = `You are ${parsed.data.displayName}, the AI host of the "${padi.name}" padi. Your role is to spawn and manage padi-local worker bots on behalf of the CEO agent. When the CEO requests workers, use the spawn-worker API. Coordinate workers, track task progress, and report status. Be concise and action-oriented.`;
   }
 
   // Generate API key

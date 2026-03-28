@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { eq, isNull } from "drizzle-orm";
+import { eq, isNull, and, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/client.js";
-import { rooms, roomMembers, messages, transitions, tickets, ticketActivity, padis } from "../db/schema/index.js";
+import { rooms, roomMembers, messages, transitions, tickets, ticketActivity, padis, bots } from "../db/schema/index.js";
 import { requireAuth, requireHuman, type AuthRequest } from "../middleware/auth.js";
 import { publishEvent } from "../realtime/ws.js";
 
@@ -102,7 +102,7 @@ router.post("/return", requireAuth, requireHuman, async (req: AuthRequest, res) 
   res.json({ middleRoomId: linkedMiddleRoomId });
 });
 
-// Send to work: create a Worker World room orchestrated by the padi's AI host
+// Send to work: create a Worker World room with CEO bots (personal) + padi AI host (spawner)
 router.post("/send-to-work", requireAuth, requireHuman, async (req: AuthRequest, res) => {
   const schema = z.object({
     fromRoomId: z.string().uuid(),
@@ -121,14 +121,39 @@ router.post("/send-to-work", requireAuth, requireHuman, async (req: AuthRequest,
     return;
   }
 
-  // Look up the padi's AI host (orchestrator)
+  // Look up the padi's AI host (worker spawner)
   let hostBotId: string | null = null;
   if (fromRoom.padiId) {
     const [padi] = await db.select({ hostBotId: padis.hostBotId }).from(padis).where(eq(padis.id, fromRoom.padiId)).limit(1);
     hostBotId = padi?.hostBotId ?? null;
   }
-  if (!hostBotId) {
-    res.status(400).json({ error: "This padi has no AI host configured. Set one up in Higher World → AI Host tab." });
+
+  // Find user's personal bots in the Middle World room (these become the CEOs)
+  const middleBotMembers = await db
+    .select({ botId: roomMembers.botId })
+    .from(roomMembers)
+    .where(and(
+      eq(roomMembers.roomId, parsed.data.fromRoomId),
+      eq(roomMembers.memberType, "bot"),
+      isNull(roomMembers.leftAt),
+    ));
+
+  let ceoBotIds: string[] = [];
+  if (middleBotMembers.length > 0) {
+    const botIds = middleBotMembers.map((m) => m.botId).filter(Boolean) as string[];
+    const personalBots = await db
+      .select({ id: bots.id })
+      .from(bots)
+      .where(and(
+        inArray(bots.id, botIds),
+        eq(bots.ownerUserId, req.user!.id),
+      ));
+    ceoBotIds = personalBots.map((b) => b.id);
+  }
+
+  // Require at least one CEO bot or AI host
+  if (ceoBotIds.length === 0 && !hostBotId) {
+    res.status(400).json({ error: "Add your personal agent to this room first, or set up a padi AI host in Higher World." });
     return;
   }
 
@@ -142,13 +167,17 @@ router.post("/send-to-work", requireAuth, requireHuman, async (req: AuthRequest,
     metadata: { linkedMiddleRoomId: fromRoom.id, dispatchedBy: req.user!.id },
   }).returning();
 
-  // Add the padi AI host as the orchestrator
-  await db.insert(roomMembers).values({
-    roomId: workerRoom!.id,
-    memberType: "bot",
-    botId: hostBotId,
-    role: "participant",
-  });
+  // Add personal (CEO) bots and AI host (spawner) to Worker World room
+  const memberInserts: { roomId: string; memberType: "bot"; botId: string; role: "participant" }[] = [];
+  for (const botId of ceoBotIds) {
+    memberInserts.push({ roomId: workerRoom!.id, memberType: "bot", botId, role: "participant" });
+  }
+  if (hostBotId && !ceoBotIds.includes(hostBotId)) {
+    memberInserts.push({ roomId: workerRoom!.id, memberType: "bot", botId: hostBotId, role: "participant" });
+  }
+  if (memberInserts.length > 0) {
+    await db.insert(roomMembers).values(memberInserts);
+  }
 
   // Post system message to Middle room
   const [sysMsg] = await db.insert(messages).values({
@@ -184,6 +213,16 @@ router.post("/send-to-work", requireAuth, requireHuman, async (req: AuthRequest,
     comment: "Auto-created from Send to Work",
   });
 
+  // Post kickoff message to Worker room so CEO bots are activated by message router
+  const hostNote = hostBotId ? " The padi AI host is available to spawn worker bots as needed." : "";
+  const [kickoffMsg] = await db.insert(messages).values({
+    roomId: workerRoom!.id,
+    authorType: "system",
+    body: `**Task dispatched by ${req.user!.displayName}:** ${parsed.data.taskDescription}${hostNote}`,
+    messageType: "dispatch",
+  }).returning();
+
+  publishEvent(workerRoom!.id, { type: "message.new", message: kickoffMsg });
   publishEvent(fromRoom.id, { type: "transition", transitionType: "send_to_work", message: sysMsg, workerRoomId: workerRoom!.id });
 
   res.status(201).json({ workerRoom, initialTicket });
