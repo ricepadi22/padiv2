@@ -23,9 +23,11 @@ router.get("/", requireAuth, async (req: AuthRequest, res) => {
   res.json({ bots: result.map(safeBotObj) });
 });
 
-// Get single bot
-router.get("/:id", requireAuth, async (req, res) => {
-  const [bot] = await db.select().from(bots).where(eq(bots.id, req.params.id!)).limit(1);
+// Get single bot — owner only
+router.get("/:id", requireAuth, async (req: AuthRequest, res) => {
+  const [bot] = await db.select().from(bots)
+    .where(and(eq(bots.id, req.params.id!), eq(bots.ownerUserId, req.user!.id)))
+    .limit(1);
   if (!bot) {
     res.status(404).json({ error: "Bot not found" });
     return;

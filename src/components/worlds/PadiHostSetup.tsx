@@ -12,11 +12,14 @@ interface PadiHostSetupProps {
   isOwner: boolean;
 }
 
+const AI_PROVIDERS = ["claude_api", "claude_local"];
+
 export function PadiHostSetup({ padiId, padiName, hostBot, isOwner }: PadiHostSetupProps) {
   const queryClient = useQueryClient();
   const [showSetup, setShowSetup] = useState(false);
   const [showEdit, setShowEdit] = useState(false);
   const [displayName, setDisplayName] = useState("");
+  const [selectedProvider, setSelectedProvider] = useState("claude_api");
   const [providerConfig, setProviderConfig] = useState<Record<string, unknown>>({});
   const [createdKey, setCreatedKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -27,13 +30,14 @@ export function PadiHostSetup({ padiId, padiName, hostBot, isOwner }: PadiHostSe
     enabled: showSetup || showEdit,
   });
 
-  const claudeProvider = providersData?.providers.find((p) => p.name === "claude_api");
+  const aiProviders = providersData?.providers.filter((p) => AI_PROVIDERS.includes(p.name)) ?? [];
+  const activeProvider = aiProviders.find((p) => p.name === selectedProvider);
 
   const createHost = useMutation({
     mutationFn: () =>
       padisApi.createHost(padiId, {
         displayName,
-        provider: "claude_api",
+        provider: selectedProvider,
         providerConfig,
       }),
     onSuccess: (data) => {
@@ -67,6 +71,7 @@ export function PadiHostSetup({ padiId, padiName, hostBot, isOwner }: PadiHostSe
   function resetSetup() {
     setShowSetup(false);
     setDisplayName("");
+    setSelectedProvider("claude_api");
     setProviderConfig({});
     setCreatedKey(null);
   }
@@ -111,9 +116,23 @@ export function PadiHostSetup({ padiId, padiName, hostBot, isOwner }: PadiHostSe
           placeholder="Host name (e.g. Padi Guide)"
           className="w-full border border-zinc-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-400"
         />
-        {claudeProvider && claudeProvider.configFields.length > 0 && (
+        {aiProviders.length > 0 && (
+          <div>
+            <label className="block text-xs font-medium text-zinc-700 mb-1.5">Provider</label>
+            <select
+              value={selectedProvider}
+              onChange={(e) => { setSelectedProvider(e.target.value); setProviderConfig({}); }}
+              className="w-full border border-zinc-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-400"
+            >
+              {aiProviders.map((p) => (
+                <option key={p.name} value={p.name}>{p.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        {activeProvider && activeProvider.configFields.length > 0 && (
           <ProviderConfigForm
-            fields={claudeProvider.configFields}
+            fields={activeProvider.configFields}
             values={providerConfig}
             onChange={setProviderConfig}
           />
