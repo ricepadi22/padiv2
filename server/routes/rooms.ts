@@ -2,7 +2,7 @@ import { Router } from "express";
 import { eq, and, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/client.js";
-import { rooms, roomMembers, users, bots, padis } from "../db/schema/index.js";
+import { rooms, roomMembers, users, bots } from "../db/schema/index.js";
 import { requireAuth, requireHuman, type AuthRequest } from "../middleware/auth.js";
 
 const router = Router();
@@ -48,16 +48,6 @@ router.post("/", requireAuth, requireHuman, async (req: AuthRequest, res) => {
     userId: req.user!.id,
     role: "owner",
   });
-
-  // Auto-add padi host bot to Higher World rooms only
-  if (parsed.data.world === "higher" && parsed.data.padiId) {
-    const [padi] = await db.select({ hostBotId: padis.hostBotId }).from(padis).where(eq(padis.id, parsed.data.padiId)).limit(1);
-    if (padi?.hostBotId) {
-      await db.insert(roomMembers).values({
-        roomId: room!.id, memberType: "bot", botId: padi.hostBotId, role: "participant",
-      });
-    }
-  }
 
   res.status(201).json({ room });
 });
@@ -123,24 +113,15 @@ router.post("/:id/members", requireAuth, requireHuman, async (req: AuthRequest, 
     return;
   }
 
-  // Enforce Higher World rule: only the padi host bot is allowed
+  // Higher World is humans-only — no bots
   const [room] = await db.select().from(rooms).where(eq(rooms.id, req.params.id!)).limit(1);
   if (!room) {
     res.status(404).json({ error: "Room not found" });
     return;
   }
   if (room.world === "higher" && parsed.data.memberType === "bot") {
-    // Allow only the padi's designated host bot
-    if (room.padiId && parsed.data.botId) {
-      const [padi] = await db.select({ hostBotId: padis.hostBotId }).from(padis).where(eq(padis.id, room.padiId)).limit(1);
-      if (!padi || padi.hostBotId !== parsed.data.botId) {
-        res.status(403).json({ error: "Only the padi AI host can be added to Higher World rooms" });
-        return;
-      }
-    } else {
-      res.status(403).json({ error: "Bots are not allowed in Higher World" });
-      return;
-    }
+    res.status(403).json({ error: "Higher World is for humans only — agents belong in Middle World" });
+    return;
   }
   // Worker World: humans can only join as observer
   if (room.world === "worker" && parsed.data.memberType === "human" && parsed.data.role === "participant") {

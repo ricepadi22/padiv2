@@ -388,13 +388,14 @@ router.post("/:id/host", requireAuth, requireHuman, async (req: AuthRequest, res
   // Update padi's hostBotId
   await db.update(padis).set({ hostBotId: bot!.id, updatedAt: new Date() }).where(eq(padis.id, padi.id));
 
-  // Auto-add host bot to all existing active rooms in this padi
+  // Auto-add host bot to existing Middle + Worker rooms in this padi (not Higher — HW is humans-only)
   const padiRooms = await db.select().from(rooms).where(
     and(eq(rooms.padiId, padi.id), eq(rooms.status, "active"))
   );
-  if (padiRooms.length > 0) {
+  const agentRooms = padiRooms.filter((r) => r.world === "middle" || r.world === "worker");
+  if (agentRooms.length > 0) {
     await db.insert(roomMembers).values(
-      padiRooms.map((r) => ({
+      agentRooms.map((r) => ({
         roomId: r.id, memberType: "bot" as const, botId: bot!.id, role: "participant" as const,
       }))
     );

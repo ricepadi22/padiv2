@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { X, Send, Bot } from "lucide-react";
-import { botsApi, type Bot as BotType } from "../../api/bots.ts";
+import { X, Send, Bot, Zap } from "lucide-react";
 import { transitionsApi } from "../../api/transitions.ts";
+import { roomsApi } from "../../api/rooms.ts";
+import { padisApi } from "../../api/padis.ts";
 
 interface DispatchModalProps {
   roomId: string;
@@ -12,35 +13,33 @@ interface DispatchModalProps {
 
 export function DispatchModal({ roomId, onClose }: DispatchModalProps) {
   const navigate = useNavigate();
-  const [selectedBotIds, setSelectedBotIds] = useState<Set<string>>(new Set());
   const [taskDescription, setTaskDescription] = useState("");
   const [taskName, setTaskName] = useState("");
 
-  const { data: botsData, isLoading } = useQuery({
-    queryKey: ["bots"],
-    queryFn: () => botsApi.list(),
+  const { data: roomData } = useQuery({
+    queryKey: ["room", roomId],
+    queryFn: () => roomsApi.get(roomId),
   });
 
+  const padiId = roomData?.room.padiId;
+
+  const { data: padiData } = useQuery({
+    queryKey: ["padi", padiId],
+    queryFn: () => padisApi.get(padiId!),
+    enabled: !!padiId,
+  });
+
+  const hostBot = padiData?.hostBot;
+
   const dispatch = useMutation({
-    mutationFn: () =>
-      transitionsApi.sendToWork(roomId, Array.from(selectedBotIds), taskDescription, taskName || undefined),
+    mutationFn: () => transitionsApi.sendToWork(roomId, taskDescription, taskName || undefined),
     onSuccess: ({ workerRoom }) => {
       onClose();
       void navigate(`/rooms/${workerRoom.id}`);
     },
   });
 
-  function toggleBot(botId: string) {
-    setSelectedBotIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(botId)) next.delete(botId);
-      else next.add(botId);
-      return next;
-    });
-  }
-
-  const bots = (botsData?.bots ?? []).filter((b: BotType) => b.status === "active");
-  const canSubmit = selectedBotIds.size > 0 && taskDescription.trim().length > 0;
+  const canSubmit = taskDescription.trim().length > 0 && !!hostBot;
 
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
@@ -56,6 +55,22 @@ export function DispatchModal({ roomId, onClose }: DispatchModalProps) {
         </div>
 
         <div className="px-5 py-4 space-y-4">
+          {/* AI Host indicator */}
+          {hostBot ? (
+            <div className="flex items-center gap-2.5 px-3 py-2.5 bg-blue-50 border border-blue-200 rounded-xl">
+              <Bot className="w-4 h-4 text-blue-500 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-blue-900">{hostBot.displayName} will orchestrate</p>
+                <p className="text-[11px] text-blue-600">Your padi's AI host will spawn worker bots as needed</p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2.5 px-3 py-2.5 bg-amber-50 border border-amber-200 rounded-xl">
+              <Zap className="w-4 h-4 text-amber-500 shrink-0" />
+              <p className="text-xs text-amber-800">No AI host configured. Set one up in Higher World → AI Host tab first.</p>
+            </div>
+          )}
+
           {/* Task description */}
           <div>
             <label className="block text-xs font-medium text-zinc-700 mb-1.5">What needs to be done?</label>
@@ -63,7 +78,7 @@ export function DispatchModal({ roomId, onClose }: DispatchModalProps) {
               autoFocus
               value={taskDescription}
               onChange={(e) => setTaskDescription(e.target.value)}
-              placeholder="Describe the task for the agents..."
+              placeholder="Describe the goal for the AI host to work on..."
               rows={3}
               className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 resize-none"
             />
@@ -71,7 +86,7 @@ export function DispatchModal({ roomId, onClose }: DispatchModalProps) {
 
           {/* Optional task name */}
           <div>
-            <label className="block text-xs font-medium text-zinc-700 mb-1.5">Room name (optional)</label>
+            <label className="block text-xs font-medium text-zinc-700 mb-1.5">Task name (optional)</label>
             <input
               value={taskName}
               onChange={(e) => setTaskName(e.target.value)}
@@ -80,60 +95,12 @@ export function DispatchModal({ roomId, onClose }: DispatchModalProps) {
             />
           </div>
 
-          {/* Bot selection */}
-          <div>
-            <label className="block text-xs font-medium text-zinc-700 mb-1.5">
-              Select agents ({selectedBotIds.size} selected)
-            </label>
-            {isLoading ? (
-              <p className="text-xs text-zinc-400 py-2">Loading agents...</p>
-            ) : bots.length === 0 ? (
-              <div className="text-center py-4 border border-dashed border-zinc-300 rounded-lg">
-                <Bot className="w-6 h-6 text-zinc-300 mx-auto mb-1" />
-                <p className="text-xs text-zinc-400">No active agents available.</p>
-                <p className="text-xs text-zinc-300 mt-0.5">Create one from the Agents page first.</p>
-              </div>
-            ) : (
-              <div className="space-y-1 max-h-40 overflow-y-auto">
-                {bots.map((bot: BotType) => {
-                  const selected = selectedBotIds.has(bot.id);
-                  return (
-                    <button
-                      key={bot.id}
-                      onClick={() => toggleBot(bot.id)}
-                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-sm transition-colors ${
-                        selected
-                          ? "bg-blue-50 border border-blue-300"
-                          : "hover:bg-zinc-50 border border-zinc-200"
-                      }`}
-                    >
-                      <div className={`w-4 h-4 rounded border-2 flex items-center justify-center shrink-0 ${
-                        selected ? "border-blue-600 bg-blue-600" : "border-zinc-300"
-                      }`}>
-                        {selected && (
-                          <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                          </svg>
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-sm text-zinc-900">{bot.displayName}</div>
-                        <div className="text-xs text-zinc-400">{bot.provider}</div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
           {dispatch.isError && (
             <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
               {dispatch.error?.message}
             </p>
           )}
 
-          {/* Actions */}
           <div className="flex gap-3 pt-1">
             <button
               onClick={onClose}
@@ -144,7 +111,7 @@ export function DispatchModal({ roomId, onClose }: DispatchModalProps) {
             <button
               onClick={() => dispatch.mutate()}
               disabled={!canSubmit || dispatch.isPending}
-              className="flex-1 py-2 bg-zinc-900 text-white rounded-lg text-sm hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+              className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50 transition-colors"
             >
               {dispatch.isPending ? "Dispatching..." : "Send to Work"}
             </button>

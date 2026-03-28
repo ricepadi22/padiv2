@@ -8,8 +8,13 @@ type Message = typeof messages.$inferSelect;
 type Room = typeof rooms.$inferSelect;
 
 export async function routeMessageToBots(message: Message, room: Room): Promise<void> {
-  // Only route human-authored chat messages to bots — prevent echo loops
-  if (message.authorBotId || message.authorType !== "human") return;
+  // Higher World is humans-only — no bot routing
+  if (room.world === "higher") return;
+
+  // Route human messages in all worlds, and bot messages in Middle World (agent-to-agent)
+  const isHumanMessage = message.authorType === "human";
+  const isBotToBot = message.authorBotId && room.world === "middle";
+  if (!isHumanMessage && !isBotToBot) return;
 
   // Find all active bot members in this room
   const members = await db
@@ -49,6 +54,9 @@ export async function routeMessageToBots(message: Message, room: Room): Promise<
   }
 
   for (const bot of activeBots) {
+    // Never route a bot's message back to itself
+    if (bot.id === message.authorBotId) continue;
+
     const provider = getProvider(bot.provider);
 
     // Create dispatch log entry

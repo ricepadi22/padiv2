@@ -15,10 +15,10 @@ export const transitionsApi = {
       body: JSON.stringify({ fromRoomId }),
     }),
 
-  sendToWork: (fromRoomId: string, botIds: string[], taskDescription: string, name?: string) =>
+  sendToWork: (fromRoomId: string, taskDescription: string, name?: string) =>
     apiFetch<{ workerRoom: Room }>("/api/transitions/send-to-work", {
       method: "POST",
-      body: JSON.stringify({ fromRoomId, botIds, taskDescription, name }),
+      body: JSON.stringify({ fromRoomId, taskDescription, name }),
     }),
 
   meetingRequest: (workerRoomId: string, reason: string) =>

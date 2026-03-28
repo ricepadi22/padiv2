@@ -2,7 +2,7 @@ import { Router } from "express";
 import { eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/client.js";
-import { rooms, roomMembers, messages, transitions, tickets, ticketActivity } from "../db/schema/index.js";
+import { rooms, roomMembers, messages, transitions, tickets, ticketActivity, padis } from "../db/schema/index.js";
 import { requireAuth, requireHuman, type AuthRequest } from "../middleware/auth.js";
 import { publishEvent } from "../realtime/ws.js";
 
@@ -102,11 +102,10 @@ router.post("/return", requireAuth, requireHuman, async (req: AuthRequest, res) 
   res.json({ middleRoomId: linkedMiddleRoomId });
 });
 
-// Send to work: dispatch bots to a Worker World room
+// Send to work: create a Worker World room orchestrated by the padi's AI host
 router.post("/send-to-work", requireAuth, requireHuman, async (req: AuthRequest, res) => {
   const schema = z.object({
     fromRoomId: z.string().uuid(),
-    botIds: z.array(z.string().uuid()).min(1),
     taskDescription: z.string().min(1),
     name: z.string().optional(),
   });
@@ -117,44 +116,57 @@ router.post("/send-to-work", requireAuth, requireHuman, async (req: AuthRequest,
   }
 
   const [fromRoom] = await db.select().from(rooms).where(eq(rooms.id, parsed.data.fromRoomId)).limit(1);
+  if (!fromRoom || fromRoom.world !== "middle") {
+    res.status(400).json({ error: "Send to Work must come from a Middle World room" });
+    return;
+  }
 
-  // Create a Worker World room, inheriting padiId from the Middle room
+  // Look up the padi's AI host (orchestrator)
+  let hostBotId: string | null = null;
+  if (fromRoom.padiId) {
+    const [padi] = await db.select({ hostBotId: padis.hostBotId }).from(padis).where(eq(padis.id, fromRoom.padiId)).limit(1);
+    hostBotId = padi?.hostBotId ?? null;
+  }
+  if (!hostBotId) {
+    res.status(400).json({ error: "This padi has no AI host configured. Set one up in Higher World → AI Host tab." });
+    return;
+  }
+
+  // Create a Worker World room
   const [workerRoom] = await db.insert(rooms).values({
     world: "worker",
-    name: parsed.data.name || `Work: ${parsed.data.taskDescription.slice(0, 50)}`,
+    name: parsed.data.name || `Task: ${parsed.data.taskDescription.slice(0, 50)}`,
     description: parsed.data.taskDescription,
-    padiId: fromRoom?.padiId ?? undefined,
+    padiId: fromRoom.padiId ?? undefined,
     createdByUserId: req.user!.id,
-    metadata: { linkedMiddleRoomId: parsed.data.fromRoomId, dispatchedBy: req.user!.id },
+    metadata: { linkedMiddleRoomId: fromRoom.id, dispatchedBy: req.user!.id },
   }).returning();
 
-  // Add bots as participants
-  for (const botId of parsed.data.botIds) {
-    await db.insert(roomMembers).values({
-      roomId: workerRoom!.id,
-      memberType: "bot",
-      botId,
-      role: "participant",
-    });
-  }
+  // Add the padi AI host as the orchestrator
+  await db.insert(roomMembers).values({
+    roomId: workerRoom!.id,
+    memberType: "bot",
+    botId: hostBotId,
+    role: "participant",
+  });
 
   // Post system message to Middle room
   const [sysMsg] = await db.insert(messages).values({
-    roomId: parsed.data.fromRoomId,
+    roomId: fromRoom.id,
     authorType: "system",
-    body: `**${req.user!.displayName}** sent ${parsed.data.botIds.length} agent(s) to work on: *${parsed.data.taskDescription}*`,
+    body: `**${req.user!.displayName}** dispatched a task to Worker World: *${parsed.data.taskDescription}*`,
     messageType: "dispatch",
   }).returning();
 
   await db.insert(transitions).values({
     transitionType: "send_to_work",
-    fromRoomId: parsed.data.fromRoomId,
+    fromRoomId: fromRoom.id,
     toRoomId: workerRoom!.id,
     initiatedByUserId: req.user!.id,
     reason: parsed.data.taskDescription,
   });
 
-  // Auto-create initial ticket from the task description
+  // Auto-create initial ticket
   const [initialTicket] = await db.insert(tickets).values({
     roomId: workerRoom!.id,
     ticketNumber: 1,
@@ -172,7 +184,7 @@ router.post("/send-to-work", requireAuth, requireHuman, async (req: AuthRequest,
     comment: "Auto-created from Send to Work",
   });
 
-  publishEvent(parsed.data.fromRoomId, { type: "transition", transitionType: "send_to_work", message: sysMsg, workerRoomId: workerRoom!.id });
+  publishEvent(fromRoom.id, { type: "transition", transitionType: "send_to_work", message: sysMsg, workerRoomId: workerRoom!.id });
 
   res.status(201).json({ workerRoom, initialTicket });
 });
