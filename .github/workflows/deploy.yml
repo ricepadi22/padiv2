@@ -1,0 +1,44 @@
+name: Deploy Frontend to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v3
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+        env:
+          VITE_API_URL: https://api.ricepadi.com
+          VITE_WS_URL: wss://api.ricepadi.com
+
+      # GitHub Pages SPA routing: copy index.html → 404.html
+      - run: cp dist/index.html dist/404.html
+
+      # Keep CNAME in the dist output
+      - run: cp CNAME dist/CNAME
+
+      - name: Deploy to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./dist
+          cname: ricepadi.com
