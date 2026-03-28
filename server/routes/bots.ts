@@ -1,19 +1,37 @@
 import { Router } from "express";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
+import { createHash } from "crypto";
 import { z } from "zod";
 import { randomUUID } from "crypto";
 import { db } from "../db/client.js";
 import { bots } from "../db/schema/index.js";
 import { requireAuth, requireHuman, type AuthRequest } from "../middleware/auth.js";
+import { listProviders, getProvider, PROVIDER_NAMES } from "../providers/index.js";
 
 const router = Router();
 
+// List all available providers + their config schemas
+router.get("/providers", requireAuth, requireHuman, (_req, res) => {
+  res.json({ providers: listProviders() });
+});
+
+// List bots
 router.get("/", requireAuth, async (_req, res) => {
   const result = await db.select().from(bots).where(eq(bots.status, "active"));
-  // Don't expose API keys
   res.json({ bots: result.map(safeBotObj) });
 });
 
+// Get single bot
+router.get("/:id", requireAuth, async (req, res) => {
+  const [bot] = await db.select().from(bots).where(eq(bots.id, req.params.id!)).limit(1);
+  if (!bot) {
+    res.status(404).json({ error: "Bot not found" });
+    return;
+  }
+  res.json({ bot: safeBotObj(bot) });
+});
+
+// Create bot
 router.post("/", requireAuth, requireHuman, async (req: AuthRequest, res) => {
   const schema = z.object({
     name: z.string().min(1).max(50),
@@ -21,36 +39,78 @@ router.post("/", requireAuth, requireHuman, async (req: AuthRequest, res) => {
     type: z.enum(["coder", "researcher", "reviewer", "general"]).default("general"),
     avatarUrl: z.string().url().optional(),
     description: z.string().optional(),
+    provider: z.enum(PROVIDER_NAMES).default("http"),
+    providerConfig: z.record(z.unknown()).default({}),
   });
+
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
 
-  const apiKey = `tw_bot_${randomUUID().replace(/-/g, "")}`;
+  const { provider, providerConfig, ...rest } = parsed.data;
+
+  // Validate provider config if non-empty
+  if (Object.keys(providerConfig).length > 0) {
+    const providerAdapter = getProvider(provider);
+    const configError = providerAdapter?.validateConfig(providerConfig);
+    if (configError) {
+      res.status(400).json({ error: `Provider config invalid: ${configError}` });
+      return;
+    }
+  }
+
+  const rawKey = `tw_bot_${randomUUID().replace(/-/g, "")}`;
+  const apiKeyHash = createHash("sha256").update(rawKey).digest("hex");
+  const apiKeyPrefix = rawKey.slice(0, 12);
+
   const [bot] = await db.insert(bots).values({
-    ...parsed.data,
+    ...rest,
     ownerUserId: req.user!.id,
-    apiKey,
+    apiKey: rawKey, // kept during migration window
+    apiKeyHash,
+    apiKeyPrefix,
+    provider,
+    providerConfig,
   }).returning();
 
-  res.status(201).json({ bot: bot!, apiKey }); // Return apiKey once on creation
+  res.status(201).json({ bot: safeBotObj(bot!), apiKey: rawKey });
 });
 
+// Update bot
 router.patch("/:id", requireAuth, requireHuman, async (req: AuthRequest, res) => {
   const schema = z.object({
     displayName: z.string().min(1).max(100).optional(),
     status: z.enum(["active", "paused", "offline"]).optional(),
     description: z.string().optional(),
     avatarUrl: z.string().url().optional(),
+    provider: z.enum(PROVIDER_NAMES).optional(),
+    providerConfig: z.record(z.unknown()).optional(),
   });
+
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.flatten() });
     return;
   }
-  const [updated] = await db.update(bots).set({ ...parsed.data, updatedAt: new Date() }).where(eq(bots.id, req.params.id!)).returning();
+
+  // Validate provider config if being updated
+  if (parsed.data.providerConfig && parsed.data.provider) {
+    const providerAdapter = getProvider(parsed.data.provider);
+    const configError = providerAdapter?.validateConfig(parsed.data.providerConfig);
+    if (configError) {
+      res.status(400).json({ error: `Provider config invalid: ${configError}` });
+      return;
+    }
+  }
+
+  const [updated] = await db
+    .update(bots)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(and(eq(bots.id, req.params.id!), eq(bots.ownerUserId, req.user!.id)))
+    .returning();
+
   if (!updated) {
     res.status(404).json({ error: "Bot not found" });
     return;
@@ -58,8 +118,30 @@ router.patch("/:id", requireAuth, requireHuman, async (req: AuthRequest, res) =>
   res.json({ bot: safeBotObj(updated) });
 });
 
+// Rotate API key
+router.post("/:id/rotate-key", requireAuth, requireHuman, async (req: AuthRequest, res) => {
+  const [bot] = await db.select().from(bots)
+    .where(and(eq(bots.id, req.params.id!), eq(bots.ownerUserId, req.user!.id)))
+    .limit(1);
+
+  if (!bot) {
+    res.status(404).json({ error: "Bot not found" });
+    return;
+  }
+
+  const rawKey = `tw_bot_${randomUUID().replace(/-/g, "")}`;
+  const apiKeyHash = createHash("sha256").update(rawKey).digest("hex");
+  const apiKeyPrefix = rawKey.slice(0, 12);
+
+  await db.update(bots)
+    .set({ apiKey: rawKey, apiKeyHash, apiKeyPrefix, updatedAt: new Date() })
+    .where(eq(bots.id, bot.id));
+
+  res.json({ apiKey: rawKey });
+});
+
 function safeBotObj(bot: typeof bots.$inferSelect) {
-  const { apiKey: _, ...safe } = bot;
+  const { apiKey: _, apiKeyHash: __, ...safe } = bot;
   return safe;
 }
 

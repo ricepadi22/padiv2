@@ -5,6 +5,7 @@ import { db } from "../db/client.js";
 import { messages, rooms, roomMembers } from "../db/schema/index.js";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { publishEvent } from "../realtime/ws.js";
+import { routeMessageToBots } from "../services/messageRouter.js";
 
 const router = Router({ mergeParams: true });
 
@@ -70,6 +71,9 @@ router.post("/", requireAuth, async (req: AuthRequest, res) => {
 
   // Publish to WebSocket subscribers
   publishEvent(room.id, { type: "message.new", message });
+
+  // Route to bots in this room (fire-and-forget)
+  void routeMessageToBots(message!, room);
 
   res.status(201).json({ message });
 });

@@ -1,5 +1,9 @@
 import type { Request, Response, NextFunction } from "express";
+import { createHash } from "crypto";
 import jwt from "jsonwebtoken";
+import { eq } from "drizzle-orm";
+import { db } from "../db/client.js";
+import { bots } from "../db/schema/index.js";
 
 export interface AuthUser {
   id: string;
@@ -13,7 +17,26 @@ export interface AuthRequest extends Request {
   botId?: string;
 }
 
-export function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
+export async function requireAuth(req: AuthRequest, res: Response, next: NextFunction) {
+  // Path 1: Hash-based API key via X-TW-Bot-Key header
+  const rawKey = req.headers["x-tw-bot-key"] as string | undefined;
+  if (rawKey) {
+    const hash = createHash("sha256").update(rawKey).digest("hex");
+    const [bot] = await db.select({ id: bots.id, status: bots.status })
+      .from(bots)
+      .where(eq(bots.apiKeyHash, hash))
+      .limit(1);
+
+    if (bot && bot.status === "active") {
+      req.botId = bot.id;
+      next();
+      return;
+    }
+    res.status(401).json({ error: "Invalid bot API key" });
+    return;
+  }
+
+  // Path 2: JWT (human user or bot JWT)
   const token = extractToken(req);
   if (!token) {
     res.status(401).json({ error: "Unauthorized" });
@@ -21,7 +44,14 @@ export function requireAuth(req: AuthRequest, res: Response, next: NextFunction)
   }
 
   try {
-    const payload = jwt.verify(token, process.env.JWT_SECRET!) as { sub: string; email: string; displayName: string; role: string; type: string; botId?: string };
+    const payload = jwt.verify(token, process.env.JWT_SECRET!) as {
+      sub: string;
+      email: string;
+      displayName: string;
+      role: string;
+      type: string;
+      botId?: string;
+    };
     if (payload.type === "bot") {
       req.botId = payload.botId;
     } else {

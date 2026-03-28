@@ -1,5 +1,5 @@
 import { NavLink, useNavigate, Outlet } from "react-router-dom";
-import { Shield, MessageSquare, Hammer, LogOut, User } from "lucide-react";
+import { Shield, MessageSquare, Hammer, Bot, LogOut } from "lucide-react";
 import { useAuth } from "../context/AuthContext.tsx";
 
 const worlds = [
@@ -42,6 +42,22 @@ export function AppLayout() {
               {label}
             </NavLink>
           ))}
+          {(user?.role === "leader" || user?.role === "admin") && (
+            <>
+              <div className="px-2 pt-3 pb-1 text-xs font-semibold text-gray-400 uppercase tracking-wider">System</div>
+              <NavLink
+                to="/agents"
+                className={({ isActive }) =>
+                  `flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors ${
+                    isActive ? "bg-gray-100 font-medium text-gray-900" : "text-gray-600 hover:bg-gray-50"
+                  }`
+                }
+              >
+                <Bot className="w-4 h-4 text-blue-600" />
+                Agents
+              </NavLink>
+            </>
+          )}
         </nav>
 
         {/* User footer */}

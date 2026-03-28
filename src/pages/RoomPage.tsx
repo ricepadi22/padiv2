@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, LogOut, Send as SendIcon, Users } from "lucide-react";
+import { ArrowLeft, Bot, LogOut, Send as SendIcon, Users } from "lucide-react";
 import { roomsApi } from "../api/rooms.ts";
 import { messagesApi } from "../api/messages.ts";
 import { transitionsApi } from "../api/transitions.ts";
@@ -10,6 +10,7 @@ import { useLiveUpdates } from "../context/LiveUpdatesContext.tsx";
 import { MessageBubble } from "../components/worlds/MessageBubble.tsx";
 import { MessageComposer } from "../components/worlds/MessageComposer.tsx";
 import { MeetingRequestBanner } from "../components/worlds/MeetingRequestBanner.tsx";
+import { InviteAgentModal } from "../components/bots/InviteAgentModal.tsx";
 import type { Message } from "../api/messages.ts";
 
 export function RoomPage() {
@@ -64,6 +65,8 @@ export function RoomPage() {
     onSuccess: ({ higherRoom }) => void navigate(`/rooms/${higherRoom.id}`),
   });
 
+  const [showInviteAgent, setShowInviteAgent] = useState(false);
+
   const room = roomData?.room;
   const members = roomData?.members ?? [];
   const messages = messagesData?.messages ?? [];
@@ -71,6 +74,7 @@ export function RoomPage() {
   // Check if current user is an observer in this room
   const myMember = members.find((m) => m.userId === user?.id);
   const isObserver = myMember?.role === "observer";
+  const canInviteAgents = room?.world !== "higher" && (user?.role === "leader" || user?.role === "admin");
 
   const meetingRequestMessages = messages.filter((m) => m.messageType === "meeting_request");
 
@@ -127,6 +131,16 @@ export function RoomPage() {
               Send to Work
             </button>
           )}
+          {canInviteAgents && (
+            <button
+              onClick={() => setShowInviteAgent(true)}
+              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
+              title="Invite an agent to this room"
+            >
+              <Bot className="w-3.5 h-3.5" />
+              Invite Agent
+            </button>
+          )}
         </div>
       </div>
 
@@ -171,6 +185,10 @@ export function RoomPage() {
           observerMode={isObserver}
         />
       </div>
+
+      {showInviteAgent && roomId && (
+        <InviteAgentModal roomId={roomId} onClose={() => setShowInviteAgent(false)} />
+      )}
     </div>
   );
 }
