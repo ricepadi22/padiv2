@@ -1,33 +1,87 @@
 import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Lock, Zap, Hash, Plus, Trash2, Send as SendIcon } from "lucide-react";
+import { Lock, Zap, Hash, Plus, Trash2, Send as SendIcon, ChevronLeft, Menu } from "lucide-react";
 import { roomsApi, type WorldType, type Room } from "../api/rooms.ts";
 import { padisApi } from "../api/padis.ts";
-import { WorldNav } from "../components/worlds/WorldNav.tsx";
 import { PadiList } from "../components/worlds/PadiList.tsx";
 import { PadiDetail } from "../components/worlds/PadiDetail.tsx";
 import { PadiDiscovery } from "../components/worlds/PadiDiscovery.tsx";
 import { useAuth } from "../context/AuthContext.tsx";
 import { usePadi } from "../context/PadiContext.tsx";
 
+const worldLabel: Record<string, string> = {
+  higher: "Higher World",
+  middle: "Middle World",
+  worker: "Worker World",
+};
+
+const worldAccent: Record<string, string> = {
+  higher: "text-amber-700",
+  middle: "text-green-700",
+  worker: "text-blue-700",
+};
+
 export function WorldsPage() {
   const { world = "middle" } = useParams<{ world?: string }>();
   const { user } = useAuth();
   const { selectedPadiId, selectPadi, showingDiscovery, showDiscovery } = usePadi();
   const currentWorld = world as WorldType;
+  const [showPadiDrawer, setShowPadiDrawer] = useState(false);
+
+  const hasPadiSelected = selectedPadiId || showingDiscovery;
 
   return (
-    <div className="flex flex-col h-full">
-      <WorldNav />
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Mobile header */}
+      <div className="md:hidden flex items-center gap-3 px-4 py-3 border-b border-zinc-200 bg-white shrink-0">
+        <button
+          onClick={() => setShowPadiDrawer(true)}
+          className="text-zinc-500 hover:text-zinc-800 transition-colors"
+        >
+          <Menu className="w-5 h-5" />
+        </button>
+        <span className={`text-sm font-semibold ${worldAccent[currentWorld] ?? "text-zinc-800"}`}>
+          {worldLabel[currentWorld]}
+        </span>
+        {selectedPadiId && !showingDiscovery && (
+          <span className="text-xs text-zinc-400 truncate">· Padi selected</span>
+        )}
+      </div>
+
       <div className="flex-1 overflow-hidden flex">
-        {/* Padi sidebar — shared across ALL worlds */}
-        <PadiList
-          selectedPadiId={selectedPadiId}
-          onSelect={selectPadi}
-          showingDiscovery={showingDiscovery}
-          onShowDiscovery={showDiscovery}
-        />
+        {/* Padi sidebar — desktop always visible, mobile hidden */}
+        <div className="hidden md:block">
+          <PadiList
+            selectedPadiId={selectedPadiId}
+            onSelect={(id) => { selectPadi(id); }}
+            showingDiscovery={showingDiscovery}
+            onShowDiscovery={showDiscovery}
+          />
+        </div>
+
+        {/* Mobile padi drawer overlay */}
+        {showPadiDrawer && (
+          <div className="md:hidden fixed inset-0 z-40 flex">
+            <div className="w-64 bg-white shadow-xl flex flex-col">
+              <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200">
+                <span className="text-xs font-semibold text-zinc-500 uppercase tracking-widest">Communities</span>
+                <button onClick={() => setShowPadiDrawer(false)} className="text-zinc-400 hover:text-zinc-700">
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto">
+                <PadiList
+                  selectedPadiId={selectedPadiId}
+                  onSelect={(id) => { selectPadi(id); setShowPadiDrawer(false); }}
+                  showingDiscovery={showingDiscovery}
+                  onShowDiscovery={() => { showDiscovery(); setShowPadiDrawer(false); }}
+                />
+              </div>
+            </div>
+            <div className="flex-1 bg-black/40" onClick={() => setShowPadiDrawer(false)} />
+          </div>
+        )}
 
         {/* Main content — varies by world */}
         <div className="flex-1 overflow-hidden">
@@ -45,7 +99,7 @@ export function WorldsPage() {
             selectedPadiId ? (
               <MiddleWorldView padiId={selectedPadiId} />
             ) : (
-              <NoPadiSelected world="middle" />
+              <NoPadiSelected world="middle" onOpenDrawer={() => setShowPadiDrawer(true)} />
             )
           )}
 
@@ -53,7 +107,7 @@ export function WorldsPage() {
             selectedPadiId ? (
               <WorkerWorldView padiId={selectedPadiId} />
             ) : (
-              <NoPadiSelected world="worker" />
+              <NoPadiSelected world="worker" onOpenDrawer={() => setShowPadiDrawer(true)} />
             )
           )}
         </div>
@@ -84,7 +138,7 @@ function HigherWorldEmpty({ onExplore }: { onExplore: () => void }) {
 }
 
 // ── No padi selected prompt ───────────────────────────────────────────────────
-function NoPadiSelected({ world }: { world: "middle" | "worker" }) {
+function NoPadiSelected({ world, onOpenDrawer }: { world: "middle" | "worker"; onOpenDrawer?: () => void }) {
   const label = world === "middle" ? "collaboration rooms" : "worker tasks";
   return (
     <div className="flex flex-col items-center justify-center h-full text-center px-8">
@@ -93,10 +147,20 @@ function NoPadiSelected({ world }: { world: "middle" | "worker" }) {
       }`}>
         <span className="text-2xl">{world === "middle" ? "💬" : "⚙️"}</span>
       </div>
-      <h3 className="text-sm font-semibold text-zinc-800 mb-1">Select a padi</h3>
+      <h3 className="text-sm font-semibold text-zinc-800 mb-1">Select a community</h3>
       <p className="text-xs text-zinc-400 max-w-xs leading-relaxed">
-        Choose a padi from the sidebar to see its {label}.
+        Choose a padi to see its {label}.
       </p>
+      {onOpenDrawer && (
+        <button
+          onClick={onOpenDrawer}
+          className={`mt-4 text-xs font-medium px-4 py-2 rounded-lg transition-colors text-white ${
+            world === "middle" ? "bg-green-600 hover:bg-green-700" : "bg-blue-600 hover:bg-blue-700"
+          }`}
+        >
+          Browse Communities
+        </button>
+      )}
     </div>
   );
 }

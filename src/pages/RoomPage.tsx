@@ -98,84 +98,86 @@ export function RoomPage() {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-200 bg-white shrink-0">
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-zinc-200 bg-white shrink-0">
         <button
           onClick={() => void navigate(-1)}
-          className="text-zinc-400 hover:text-zinc-700 transition-colors"
+          className="text-zinc-400 hover:text-zinc-700 transition-colors shrink-0 p-1"
         >
           <ArrowLeft className="w-4 h-4" />
         </button>
 
-        <div className="flex-1 min-w-0 flex items-center gap-2">
-          <h1 className="text-sm font-semibold text-zinc-900 truncate">{room?.name ?? "Loading..."}</h1>
-          {room && (
-            <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium border shrink-0 ${accentClass}`}>
-              {room.world}
-            </span>
-          )}
-          {isObserver && (
-            <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-500 font-medium shrink-0">
-              observing
-            </span>
-          )}
-        </div>
-
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <h1 className="text-sm font-semibold text-zinc-900 truncate">{room?.name ?? "Loading..."}</h1>
+            {room && (
+              <span className={`hidden sm:inline text-[10px] px-1.5 py-0.5 rounded-full font-medium border shrink-0 ${accentClass}`}>
+                {room.world}
+              </span>
+            )}
+          </div>
           <div
-            className="flex items-center gap-1 text-xs text-zinc-400 mr-1"
+            className="text-[11px] text-zinc-400 truncate"
             title={activeMembers.map((m) => m.displayName ?? (m.memberType === "bot" ? "Agent" : "User")).join(", ")}
           >
-            <Users className="w-3.5 h-3.5" />
-            <span>{activeMembers.length}</span>
+            {activeMembers.length} member{activeMembers.length !== 1 ? "s" : ""}
+            {isObserver && " · observing"}
           </div>
+        </div>
+
+        <div className="flex items-center gap-1 shrink-0">
+          {/* Worker World: chat/tickets toggle */}
+          {room?.world === "worker" && (
+            <div className="flex items-center border border-zinc-200 rounded-lg overflow-hidden">
+              <button
+                onClick={() => setActiveTab("chat")}
+                className={`flex items-center gap-1 text-xs font-medium px-2 py-1.5 transition-colors ${
+                  activeTab === "chat" ? "bg-zinc-100 text-zinc-900" : "text-zinc-400 hover:text-zinc-700"
+                }`}
+              >
+                <MessageSquare className="w-3 h-3" />
+                <span className="hidden sm:inline">Chat</span>
+              </button>
+              <button
+                onClick={() => setActiveTab("tickets")}
+                className={`flex items-center gap-1 text-xs font-medium px-2 py-1.5 transition-colors ${
+                  activeTab === "tickets" ? "bg-zinc-100 text-zinc-900" : "text-zinc-400 hover:text-zinc-700"
+                }`}
+              >
+                <Ticket className="w-3 h-3" />
+                <span className="hidden sm:inline">Tickets</span>
+              </button>
+            </div>
+          )}
+          {/* Middle World actions — text labels hidden on mobile */}
           {room?.world === "middle" && (
             <button
               onClick={() => stepAway.mutate()}
               disabled={stepAway.isPending}
-              className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50"
+              className="flex items-center gap-1 text-xs font-medium px-2 py-1.5 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50"
+              title="Step Away"
             >
               <LogOut className="w-3 h-3" />
-              Step Away
+              <span className="hidden sm:inline">Step Away</span>
             </button>
           )}
           {room?.world === "middle" && (
             <button
               onClick={() => setShowDispatch(true)}
-              className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+              className="flex items-center gap-1 text-xs font-medium px-2 py-1.5 text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
+              title="Send to Work"
             >
               <SendIcon className="w-3 h-3" />
-              Send to Work
+              <span className="hidden sm:inline">Send to Work</span>
             </button>
-          )}
-          {room?.world === "worker" && (
-            <div className="flex items-center border border-zinc-200 rounded-lg overflow-hidden">
-              <button
-                onClick={() => setActiveTab("chat")}
-                className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 transition-colors ${
-                  activeTab === "chat" ? "bg-zinc-100 text-zinc-900" : "text-zinc-400 hover:text-zinc-700"
-                }`}
-              >
-                <MessageSquare className="w-3 h-3" />
-                Chat
-              </button>
-              <button
-                onClick={() => setActiveTab("tickets")}
-                className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 transition-colors ${
-                  activeTab === "tickets" ? "bg-zinc-100 text-zinc-900" : "text-zinc-400 hover:text-zinc-700"
-                }`}
-              >
-                <Ticket className="w-3 h-3" />
-                Tickets
-              </button>
-            </div>
           )}
           {canInviteAgents && (
             <button
               onClick={() => setShowInviteAgent(true)}
-              className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 text-zinc-700 bg-white border border-zinc-300 rounded-lg hover:bg-zinc-50 transition-colors"
+              className="flex items-center gap-1 text-xs font-medium px-2 py-1.5 text-zinc-700 bg-white border border-zinc-300 rounded-lg hover:bg-zinc-50 transition-colors"
+              title="Invite Agent"
             >
               <Bot className="w-3 h-3" />
-              Invite Agent
+              <span className="hidden sm:inline">Invite Agent</span>
             </button>
           )}
           <button
