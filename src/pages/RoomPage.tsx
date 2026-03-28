@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bot, LogOut, Send as SendIcon, Users, Ticket, MessageSquare } from "lucide-react";
+import { ArrowLeft, Bot, LogOut, Send as SendIcon, Users, Ticket, MessageSquare, Trash2 } from "lucide-react";
 import { roomsApi } from "../api/rooms.ts";
 import { messagesApi } from "../api/messages.ts";
 import { transitionsApi } from "../api/transitions.ts";
@@ -12,6 +12,7 @@ import { MessageComposer } from "../components/worlds/MessageComposer.tsx";
 import { MeetingRequestBanner } from "../components/worlds/MeetingRequestBanner.tsx";
 import { InviteAgentModal } from "../components/bots/InviteAgentModal.tsx";
 import { TicketBoard } from "../components/worlds/TicketBoard.tsx";
+import { DispatchModal } from "../components/worlds/DispatchModal.tsx";
 import type { Message } from "../api/messages.ts";
 
 const worldAccent: Record<string, string> = {
@@ -29,7 +30,9 @@ export function RoomPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
   const [showInviteAgent, setShowInviteAgent] = useState(false);
+  const [showDispatch, setShowDispatch] = useState(false);
   const [activeTab, setActiveTab] = useState<"chat" | "tickets">("chat");
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const { data: roomData } = useQuery({
     queryKey: ["room", roomId],
@@ -72,13 +75,21 @@ export function RoomPage() {
     onSuccess: ({ higherRoom }) => void navigate(`/rooms/${higherRoom.id}`),
   });
 
+  const archiveRoom = useMutation({
+    mutationFn: () => roomsApi.update(roomId!, { status: "archived" }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["rooms"] });
+      void navigate(-1);
+    },
+  });
+
   const room = roomData?.room;
   const members = roomData?.members ?? [];
   const messages = messagesData?.messages ?? [];
 
   const myMember = members.find((m) => m.userId === user?.id);
   const isObserver = myMember?.role === "observer";
-  const canInviteAgents = room?.world !== "higher" && (user?.role === "leader" || user?.role === "admin");
+  const canInviteAgents = room?.world !== "higher";
 
   const meetingRequestMessages = messages.filter((m) => m.messageType === "meeting_request");
   const accentClass = room ? (worldAccent[room.world] ?? "") : "";
@@ -125,7 +136,7 @@ export function RoomPage() {
           )}
           {room?.world === "middle" && (
             <button
-              onClick={() => void navigate(`/rooms/${roomId}/dispatch`)}
+              onClick={() => setShowDispatch(true)}
               className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
             >
               <SendIcon className="w-3 h-3" />
@@ -163,6 +174,13 @@ export function RoomPage() {
               Invite Agent
             </button>
           )}
+          <button
+            onClick={() => setShowDeleteConfirm(true)}
+            className="text-zinc-400 hover:text-red-600 transition-colors p-1.5"
+            title="Archive room"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 
@@ -223,6 +241,37 @@ export function RoomPage() {
 
       {showInviteAgent && roomId && (
         <InviteAgentModal roomId={roomId} world={room?.world} onClose={() => setShowInviteAgent(false)} />
+      )}
+
+      {showDispatch && roomId && (
+        <DispatchModal roomId={roomId} onClose={() => setShowDispatch(false)} />
+      )}
+
+      {/* Delete/Archive confirmation */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+            <h2 className="text-base font-semibold text-zinc-900">Archive this room?</h2>
+            <p className="text-sm text-zinc-500">
+              This room will be archived and hidden from the room list. Messages will be preserved.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                className="flex-1 py-2 border border-zinc-300 text-zinc-700 rounded-lg text-sm hover:bg-zinc-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => archiveRoom.mutate()}
+                disabled={archiveRoom.isPending}
+                className="flex-1 py-2 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 disabled:opacity-50 transition-colors"
+              >
+                {archiveRoom.isPending ? "Archiving..." : "Archive Room"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

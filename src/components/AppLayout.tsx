@@ -56,24 +56,20 @@ export function AppLayout() {
             </NavLink>
           ))}
 
-          {(user?.role === "leader" || user?.role === "admin") && (
-            <>
-              <p className="px-3 pt-4 pb-2 text-[10px] font-semibold text-zinc-600 uppercase tracking-widest">System</p>
-              <NavLink
-                to="/agents"
-                className={({ isActive }) =>
-                  `flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
-                    isActive
-                      ? "bg-zinc-800 text-white"
-                      : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900"
-                  }`
-                }
-              >
-                <Bot className="w-4 h-4 shrink-0" />
-                <span>Agents</span>
-              </NavLink>
-            </>
-          )}
+          <p className="px-3 pt-4 pb-2 text-[10px] font-semibold text-zinc-600 uppercase tracking-widest">System</p>
+          <NavLink
+            to="/agents"
+            className={({ isActive }) =>
+              `flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors ${
+                isActive
+                  ? "bg-zinc-800 text-white"
+                  : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900"
+              }`
+            }
+          >
+            <Bot className="w-4 h-4 shrink-0" />
+            <span>Agents</span>
+          </NavLink>
         </nav>
 
         {/* User footer */}

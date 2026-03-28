@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
-import { Plus, Archive, Hash } from "lucide-react";
-import type { Room, WorldType } from "../../api/rooms.ts";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Plus, Archive, Hash, Trash2 } from "lucide-react";
+import { roomsApi, type Room, type WorldType } from "../../api/rooms.ts";
 
 const worldConfig: Record<WorldType, { empty: string; createLabel: string }> = {
   higher: {
@@ -27,6 +28,14 @@ interface RoomListProps {
 export function RoomList({ rooms, world, onCreateRoom, emptyMessage }: RoomListProps) {
   const { empty, createLabel } = worldConfig[world];
   const displayEmpty = emptyMessage ?? empty;
+  const queryClient = useQueryClient();
+
+  const archiveRoom = useMutation({
+    mutationFn: (roomId: string) => roomsApi.update(roomId, { status: "archived" }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["rooms"] });
+    },
+  });
 
   return (
     <div className="flex flex-col h-full">
@@ -47,22 +56,31 @@ export function RoomList({ rooms, world, onCreateRoom, emptyMessage }: RoomListP
           <div className="px-4 py-6 text-sm text-zinc-400 text-center leading-relaxed">{displayEmpty}</div>
         ) : (
           rooms.map((room) => (
-            <Link
+            <div
               key={room.id}
-              to={`/rooms/${room.id}`}
               className="flex items-center gap-2.5 px-4 py-2 hover:bg-zinc-50 transition-colors group"
             >
               <Hash className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-              <div className="flex-1 min-w-0">
+              <Link
+                to={`/rooms/${room.id}`}
+                className="flex-1 min-w-0"
+              >
                 <div className="text-sm text-zinc-700 group-hover:text-zinc-900 truncate transition-colors">{room.name}</div>
                 {room.description && (
                   <div className="text-xs text-zinc-400 truncate">{room.description}</div>
                 )}
-              </div>
+              </Link>
               {room.status === "archived" && (
                 <Archive className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
               )}
-            </Link>
+              <button
+                onClick={(e) => { e.preventDefault(); archiveRoom.mutate(room.id); }}
+                className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-red-600 transition-all shrink-0"
+                title="Archive room"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
           ))
         )}
       </div>

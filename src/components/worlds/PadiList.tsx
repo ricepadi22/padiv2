@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Users, Plus, FolderOpen } from "lucide-react";
+import { Plus, FolderOpen, Trash2 } from "lucide-react";
 import { padisApi, type Padi } from "../../api/padis.ts";
 
 interface PadiListProps {
@@ -30,6 +30,14 @@ export function PadiList({ selectedPadiId, onSelect }: PadiListProps) {
     },
   });
 
+  const archivePadi = useMutation({
+    mutationFn: (padiId: string) => padisApi.update(padiId, { status: "archived" }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["padis"] });
+      if (selectedPadiId) onSelect(selectedPadiId); // deselect if archived
+    },
+  });
+
   const padis = data?.padis ?? [];
 
   return (
@@ -56,27 +64,38 @@ export function PadiList({ selectedPadiId, onSelect }: PadiListProps) {
           </div>
         ) : (
           padis.map((padi: Padi) => (
-            <button
+            <div
               key={padi.id}
-              onClick={() => onSelect(padi.id)}
-              className={`w-full text-left flex items-start gap-2.5 px-4 py-2.5 transition-colors ${
+              className={`flex items-start gap-2.5 px-4 py-2.5 transition-colors group ${
                 selectedPadiId === padi.id
                   ? "bg-amber-50 border-r-2 border-amber-400"
                   : "hover:bg-zinc-100"
               }`}
             >
-              <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
-                <span className="text-xs font-bold text-amber-700">
-                  {padi.name.slice(0, 2).toUpperCase()}
-                </span>
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="text-sm font-medium text-zinc-800 truncate">{padi.name}</div>
-                {padi.description && (
-                  <div className="text-xs text-zinc-500 truncate mt-0.5">{padi.description}</div>
-                )}
-              </div>
-            </button>
+              <button
+                onClick={() => onSelect(padi.id)}
+                className="flex items-start gap-2.5 flex-1 min-w-0 text-left"
+              >
+                <div className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="text-xs font-bold text-amber-700">
+                    {padi.name.slice(0, 2).toUpperCase()}
+                  </span>
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-zinc-800 truncate">{padi.name}</div>
+                  {padi.description && (
+                    <div className="text-xs text-zinc-500 truncate mt-0.5">{padi.description}</div>
+                  )}
+                </div>
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); archivePadi.mutate(padi.id); }}
+                className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-red-600 transition-all shrink-0 mt-1"
+                title="Archive padi"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
           ))
         )}
       </div>
