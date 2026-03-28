@@ -25,40 +25,47 @@ export function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-zinc-50 flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <h1 className="text-2xl font-bold text-gray-900">Rice Padi</h1>
-          <p className="text-gray-600 mt-1">Three Worlds — Kingdom Mission Collaboration</p>
+          <div className="inline-flex items-center justify-center w-10 h-10 rounded-xl bg-zinc-900 mb-4">
+            <span className="text-white text-sm font-bold">RP</span>
+          </div>
+          <h1 className="text-xl font-semibold text-zinc-900">Welcome back</h1>
+          <p className="text-sm text-zinc-500 mt-1">Sign in to Rice Padi</p>
         </div>
-        <form onSubmit={handleSubmit} className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">Sign In</h2>
-          {error && <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">{error}</div>}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2.5">
+              {error}
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-zinc-700">Email</label>
             <input
               type="email" value={email} onChange={(e) => setEmail(e.target.value)}
               required autoFocus
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              className="w-full border border-zinc-300 rounded-lg px-3 py-2.5 text-sm text-zinc-900 bg-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent transition-shadow"
             />
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+          <div className="space-y-1.5">
+            <label className="block text-sm font-medium text-zinc-700">Password</label>
             <input
               type="password" value={password} onChange={(e) => setPassword(e.target.value)}
               required
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              className="w-full border border-zinc-300 rounded-lg px-3 py-2.5 text-sm text-zinc-900 bg-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent transition-shadow"
             />
           </div>
           <button
             type="submit" disabled={loading}
-            className="w-full py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            className="w-full py-2.5 bg-zinc-900 text-white text-sm font-medium rounded-lg hover:bg-zinc-800 disabled:opacity-50 transition-colors mt-2"
           >
-            {loading ? "Signing in..." : "Sign In"}
+            {loading ? "Signing in..." : "Sign in"}
           </button>
-          <p className="text-center text-sm text-gray-600">
+          <p className="text-center text-sm text-zinc-500">
             No account?{" "}
-            <Link to="/signup" className="text-blue-600 font-medium hover:underline">Sign up</Link>
+            <Link to="/signup" className="text-zinc-900 font-medium hover:underline">Sign up</Link>
           </p>
         </form>
       </div>

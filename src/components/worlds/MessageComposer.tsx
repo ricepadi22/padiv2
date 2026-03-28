@@ -1,5 +1,5 @@
 import { useState, useRef, type KeyboardEvent } from "react";
-import { Send } from "lucide-react";
+import { ArrowUp } from "lucide-react";
 
 interface MessageComposerProps {
   onSend: (body: string) => void;
@@ -36,37 +36,36 @@ export function MessageComposer({ onSend, disabled, placeholder, observerMode }:
 
   if (observerMode) {
     return (
-      <div className="px-4 py-3 border-t border-gray-200 bg-gray-50">
-        <div className="text-sm text-gray-500 text-center italic">
-          👁 You are observing this workspace. Humans manage from Middle World.
+      <div className="px-4 py-4 border-t border-zinc-100">
+        <div className="text-xs text-zinc-400 text-center">
+          You are observing — humans manage this space from Middle World
         </div>
       </div>
     );
   }
 
   return (
-    <div className="px-4 py-3 border-t border-gray-200">
-      <div className="flex items-end gap-2 bg-white border border-gray-300 rounded-xl px-3 py-2 focus-within:border-blue-400 focus-within:ring-1 focus-within:ring-blue-400">
+    <div className="px-4 py-3 border-t border-zinc-100">
+      <div className="flex items-end gap-2 border border-zinc-200 rounded-xl px-3 py-2.5 bg-white focus-within:border-zinc-400 focus-within:ring-2 focus-within:ring-zinc-100 transition-all">
         <textarea
           ref={textareaRef}
           value={value}
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={handleKeyDown}
           onInput={handleInput}
-          placeholder={placeholder ?? "Send a message... (Enter to send, Shift+Enter for newline)"}
+          placeholder={placeholder ?? "Message... (Enter to send)"}
           disabled={disabled}
           rows={1}
-          className="flex-1 resize-none bg-transparent text-sm text-gray-900 placeholder-gray-400 outline-none min-h-[24px] max-h-[200px]"
+          className="flex-1 resize-none bg-transparent text-sm text-zinc-900 placeholder-zinc-400 outline-none min-h-[22px] max-h-[200px] leading-relaxed"
         />
         <button
           onClick={handleSend}
           disabled={!value.trim() || disabled}
-          className="shrink-0 p-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          className="shrink-0 w-7 h-7 rounded-lg bg-zinc-900 text-white flex items-center justify-center hover:bg-zinc-700 disabled:opacity-25 disabled:cursor-not-allowed transition-all"
         >
-          <Send className="w-4 h-4" />
+          <ArrowUp className="w-3.5 h-3.5" />
         </button>
       </div>
-      <div className="text-xs text-gray-400 mt-1 px-1">Markdown supported: **bold**, *italic*, `code`</div>
     </div>
   );
 }

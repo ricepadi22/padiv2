@@ -13,6 +13,12 @@ import { MeetingRequestBanner } from "../components/worlds/MeetingRequestBanner.
 import { InviteAgentModal } from "../components/bots/InviteAgentModal.tsx";
 import type { Message } from "../api/messages.ts";
 
+const worldAccent: Record<string, string> = {
+  higher: "text-amber-600 bg-amber-50 border-amber-200",
+  middle: "text-blue-600 bg-blue-50 border-blue-200",
+  worker: "text-purple-600 bg-purple-50 border-purple-200",
+};
+
 export function RoomPage() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
@@ -21,6 +27,7 @@ export function RoomPage() {
   const queryClient = useQueryClient();
   const bottomRef = useRef<HTMLDivElement>(null);
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
+  const [showInviteAgent, setShowInviteAgent] = useState(false);
 
   const { data: roomData } = useQuery({
     queryKey: ["room", roomId],
@@ -34,7 +41,6 @@ export function RoomPage() {
     enabled: !!roomId,
   });
 
-  // Subscribe to WebSocket room
   useEffect(() => {
     if (!roomId) return;
     subscribeRooms([roomId]);
@@ -50,7 +56,6 @@ export function RoomPage() {
     };
   }, [roomId, subscribeRooms, unsubscribeRooms, addHandler, queryClient]);
 
-  // Scroll to bottom on new messages
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messagesData?.messages.length, localMessages.length]);
@@ -65,79 +70,72 @@ export function RoomPage() {
     onSuccess: ({ higherRoom }) => void navigate(`/rooms/${higherRoom.id}`),
   });
 
-  const [showInviteAgent, setShowInviteAgent] = useState(false);
-
   const room = roomData?.room;
   const members = roomData?.members ?? [];
   const messages = messagesData?.messages ?? [];
 
-  // Check if current user is an observer in this room
   const myMember = members.find((m) => m.userId === user?.id);
   const isObserver = myMember?.role === "observer";
   const canInviteAgents = room?.world !== "higher" && (user?.role === "leader" || user?.role === "admin");
 
   const meetingRequestMessages = messages.filter((m) => m.messageType === "meeting_request");
+  const accentClass = room ? (worldAccent[room.world] ?? "") : "";
 
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 bg-white shrink-0">
-        <button onClick={() => void navigate(-1)} className="text-gray-500 hover:text-gray-700">
-          <ArrowLeft className="w-5 h-5" />
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-zinc-200 bg-white shrink-0">
+        <button
+          onClick={() => void navigate(-1)}
+          className="text-zinc-400 hover:text-zinc-700 transition-colors"
+        >
+          <ArrowLeft className="w-4 h-4" />
         </button>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <h1 className="text-sm font-semibold text-gray-900 truncate">{room?.name ?? "Loading..."}</h1>
-            {room && (
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                room.world === "higher" ? "bg-amber-100 text-amber-700" :
-                room.world === "middle" ? "bg-blue-100 text-blue-700" :
-                "bg-purple-100 text-purple-700"
-              }`}>
-                {room.world}
-              </span>
-            )}
-            {isObserver && (
-              <span className="text-xs px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 font-medium">
-                👁 Observing
-              </span>
-            )}
-          </div>
-          {room?.description && <div className="text-xs text-gray-500 truncate">{room.description}</div>}
+
+        <div className="flex-1 min-w-0 flex items-center gap-2">
+          <h1 className="text-sm font-semibold text-zinc-900 truncate">{room?.name ?? "Loading..."}</h1>
+          {room && (
+            <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium border shrink-0 ${accentClass}`}>
+              {room.world}
+            </span>
+          )}
+          {isObserver && (
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-500 font-medium shrink-0">
+              observing
+            </span>
+          )}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="flex items-center gap-1 text-xs text-gray-500">
-            <Users className="w-4 h-4" />
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1 text-xs text-zinc-400 mr-1">
+            <Users className="w-3.5 h-3.5" />
             <span>{members.filter((m) => !m.leftAt).length}</span>
           </div>
           {room?.world === "middle" && (
             <button
               onClick={() => stepAway.mutate()}
               disabled={stepAway.isPending}
-              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-amber-100 text-amber-700 rounded-lg hover:bg-amber-200 transition-colors"
-              title="Step away to private discussion"
+              className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50"
             >
-              <LogOut className="w-3.5 h-3.5" />
+              <LogOut className="w-3 h-3" />
               Step Away
             </button>
           )}
           {room?.world === "middle" && (
             <button
               onClick={() => void navigate(`/rooms/${roomId}/dispatch`)}
-              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-purple-100 text-purple-700 rounded-lg hover:bg-purple-200 transition-colors"
-              title="Send agents to work"
+              className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors"
             >
-              <SendIcon className="w-3.5 h-3.5" />
+              <SendIcon className="w-3 h-3" />
               Send to Work
             </button>
           )}
           {canInviteAgents && (
             <button
               onClick={() => setShowInviteAgent(true)}
-              className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition-colors"
-              title="Invite an agent to this room"
+              className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 text-zinc-700 bg-white border border-zinc-300 rounded-lg hover:bg-zinc-50 transition-colors"
             >
-              <Bot className="w-3.5 h-3.5" />
+              <Bot className="w-3 h-3" />
               Invite Agent
             </button>
           )}
@@ -146,7 +144,7 @@ export function RoomPage() {
 
       {/* Meeting request banners */}
       {meetingRequestMessages.length > 0 && (
-        <div className="shrink-0 border-b border-gray-100">
+        <div className="shrink-0 border-b border-zinc-100">
           {meetingRequestMessages.map((msg) => (
             <MeetingRequestBanner
               key={msg.id}
@@ -158,21 +156,25 @@ export function RoomPage() {
       )}
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto py-2">
+      <div className="flex-1 overflow-y-auto py-3">
         {messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-gray-400 text-sm">
-            No messages yet. Start the conversation.
+          <div className="flex items-center justify-center h-full text-sm text-zinc-400">
+            No messages yet
           </div>
         ) : (
-          <>
-            {messages.map((msg) => (
-              <MessageBubble
-                key={msg.id}
-                message={msg}
-                authorName={msg.authorType === "system" ? "System" : (msg.authorUserId === user?.id ? (user?.displayName ?? "You") : `User ${msg.authorUserId?.slice(0, 6)}`)}
-              />
-            ))}
-          </>
+          messages.map((msg) => (
+            <MessageBubble
+              key={msg.id}
+              message={msg}
+              authorName={
+                msg.authorType === "system"
+                  ? "System"
+                  : msg.authorUserId === user?.id
+                  ? (user?.displayName ?? "You")
+                  : `User ${msg.authorUserId?.slice(0, 6)}`
+              }
+            />
+          ))
         )}
         <div ref={bottomRef} />
       </div>

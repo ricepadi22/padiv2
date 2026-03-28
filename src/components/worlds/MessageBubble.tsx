@@ -7,40 +7,43 @@ interface MessageBubbleProps {
   avatarUrl?: string;
 }
 
-const systemBg: Record<string, string> = {
+const systemStyles: Record<string, string> = {
   step_away: "bg-amber-50 border-amber-200 text-amber-800",
-  return: "bg-green-50 border-green-200 text-green-800",
+  return: "bg-emerald-50 border-emerald-200 text-emerald-800",
   dispatch: "bg-blue-50 border-blue-200 text-blue-800",
   meeting_request: "bg-red-50 border-red-200 text-red-800",
 };
 
 export function MessageBubble({ message, authorName, avatarUrl }: MessageBubbleProps) {
   if (message.authorType === "system") {
-    const style = systemBg[message.messageType] ?? "bg-gray-50 border-gray-200 text-gray-700";
+    const style = systemStyles[message.messageType] ?? "bg-zinc-50 border-zinc-200 text-zinc-600";
     return (
-      <div className={`mx-4 my-1 px-4 py-2 rounded-lg border text-sm ${style}`}>
+      <div className={`mx-4 my-1.5 px-3 py-2 rounded-lg border text-xs ${style}`}>
         <span dangerouslySetInnerHTML={{ __html: simpleMarkdown(message.body) }} />
       </div>
     );
   }
 
+  const time = new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
   return (
-    <div className="flex gap-3 px-4 py-2 hover:bg-gray-50 group">
+    <div className="flex gap-3 px-4 py-1.5 hover:bg-zinc-50/60 group transition-colors">
       <div className="shrink-0 mt-0.5">
         <AvatarDisplay
           displayName={authorName}
           avatarUrl={avatarUrl}
           authorType={message.authorType}
-          size="md"
+          size="sm"
         />
       </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-xs text-gray-500 mb-0.5">
-          {new Date(message.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-          {message.editedAt && <span className="ml-1 italic">(edited)</span>}
+      <div className="flex-1 min-w-0 pt-0.5">
+        <div className="flex items-baseline gap-2 mb-0.5">
+          <span className="text-sm font-semibold text-zinc-900">{authorName}</span>
+          <span className="text-[11px] text-zinc-400">{time}</span>
+          {message.editedAt && <span className="text-[11px] text-zinc-400 italic">edited</span>}
         </div>
         <div
-          className="text-sm text-gray-800 leading-relaxed break-words prose prose-sm max-w-none"
+          className="text-sm text-zinc-700 leading-relaxed break-words"
           dangerouslySetInnerHTML={{ __html: simpleMarkdown(message.body) }}
         />
       </div>
@@ -48,12 +51,11 @@ export function MessageBubble({ message, authorName, avatarUrl }: MessageBubbleP
   );
 }
 
-// Very basic markdown: bold, italic, code
 function simpleMarkdown(text: string): string {
   return text
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/`(.+?)`/g, "<code class='bg-gray-100 px-1 rounded text-xs font-mono'>$1</code>")
+    .replace(/`(.+?)`/g, "<code class='bg-zinc-100 px-1 rounded text-xs font-mono text-zinc-700'>$1</code>")
     .replace(/\n/g, "<br />");
 }

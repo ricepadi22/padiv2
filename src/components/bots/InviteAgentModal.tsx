@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { X, Bot, ChevronRight, Copy, Check } from "lucide-react";
+import { X, Bot, Copy, Check } from "lucide-react";
 import { botsApi, type Bot as BotType } from "../../api/bots.ts";
 import { ProviderConfigForm } from "./ProviderConfigForm.tsx";
 
@@ -9,7 +9,7 @@ interface Props {
   onClose: () => void;
 }
 
-type Step = "pick" | "configure" | "done";
+type Step = "pick" | "done";
 
 export function InviteAgentModal({ roomId, onClose }: Props) {
   const queryClient = useQueryClient();
@@ -17,8 +17,6 @@ export function InviteAgentModal({ roomId, onClose }: Props) {
   const [selectedBotId, setSelectedBotId] = useState<string | null>(null);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
 
-  // New bot form state
-  const [newName, setNewName] = useState("");
   const [newDisplayName, setNewDisplayName] = useState("");
   const [newDescription, setNewDescription] = useState("");
   const [selectedProvider, setSelectedProvider] = useState("http");
@@ -27,11 +25,7 @@ export function InviteAgentModal({ roomId, onClose }: Props) {
   const [createdApiKey, setCreatedApiKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  const { data: botsData } = useQuery({
-    queryKey: ["bots"],
-    queryFn: () => botsApi.list(),
-  });
-
+  const { data: botsData } = useQuery({ queryKey: ["bots"], queryFn: () => botsApi.list() });
   const { data: providersData } = useQuery({
     queryKey: ["providers"],
     queryFn: () => botsApi.listProviders(),
@@ -43,7 +37,7 @@ export function InviteAgentModal({ roomId, onClose }: Props) {
   const createAndInvite = useMutation({
     mutationFn: async () => {
       const { bot, apiKey } = await botsApi.create({
-        name: newName.toLowerCase().replace(/\s+/g, "_"),
+        name: newDisplayName.toLowerCase().replace(/\s+/g, "_"),
         displayName: newDisplayName,
         description: newDescription,
         provider: selectedProvider,
@@ -77,47 +71,52 @@ export function InviteAgentModal({ roomId, onClose }: Props) {
   }
 
   const existingBots = botsData?.bots ?? [];
-  const canSubmitNew = newName.trim().length > 0 && newDisplayName.trim().length > 0;
+  const canSubmitNew = newDisplayName.trim().length > 0;
 
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+    <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-zinc-200">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-100">
           <div className="flex items-center gap-2">
-            <Bot className="w-4 h-4 text-blue-600" />
-            <h2 className="text-sm font-semibold text-gray-900">Invite Agent</h2>
+            <Bot className="w-4 h-4 text-zinc-500" />
+            <h2 className="text-sm font-semibold text-zinc-900">Invite Agent</h2>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+          <button onClick={onClose} className="text-zinc-400 hover:text-zinc-700 transition-colors">
             <X className="w-4 h-4" />
           </button>
         </div>
 
         <div className="px-5 py-4">
-          {/* Step: Pick */}
           {step === "pick" && (
-            <div className="space-y-3">
-              {/* Existing bots */}
+            <div className="space-y-4">
               {existingBots.length > 0 && !isCreatingNew && (
                 <div>
-                  <p className="text-xs font-medium text-gray-500 mb-2">Your agents</p>
-                  <div className="space-y-1 max-h-48 overflow-y-auto">
+                  <p className="text-xs font-medium text-zinc-500 mb-2">Existing agents</p>
+                  <div className="space-y-1 max-h-44 overflow-y-auto">
                     {existingBots.map((bot: BotType) => (
                       <button
                         key={bot.id}
                         onClick={() => setSelectedBotId(bot.id)}
                         className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-left text-sm transition-colors ${
                           selectedBotId === bot.id
-                            ? "bg-blue-50 border border-blue-200"
-                            : "hover:bg-gray-50 border border-transparent"
+                            ? "bg-zinc-900 text-white"
+                            : "hover:bg-zinc-50 border border-zinc-200"
                         }`}
                       >
                         <div>
-                          <div className="font-medium text-gray-900">{bot.displayName}</div>
-                          <div className="text-xs text-gray-400">{bot.provider} · {bot.apiKeyPrefix}…</div>
+                          <div className={`font-medium text-sm ${selectedBotId === bot.id ? "text-white" : "text-zinc-900"}`}>
+                            {bot.displayName}
+                          </div>
+                          <div className={`text-xs ${selectedBotId === bot.id ? "text-zinc-400" : "text-zinc-400"}`}>
+                            {bot.provider} · {bot.apiKeyPrefix}…
+                          </div>
                         </div>
-                        <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          bot.status === "active" ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+                        <span className={`text-[11px] px-2 py-0.5 rounded-full ${
+                          selectedBotId === bot.id
+                            ? "bg-white/20 text-white"
+                            : bot.status === "active"
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-zinc-100 text-zinc-500"
                         }`}>{bot.status}</span>
                       </button>
                     ))}
@@ -126,55 +125,53 @@ export function InviteAgentModal({ roomId, onClose }: Props) {
                     <button
                       onClick={() => inviteExisting.mutate(selectedBotId)}
                       disabled={inviteExisting.isPending}
-                      className="w-full mt-3 flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                      className="w-full mt-3 py-2 bg-zinc-900 text-white text-sm font-medium rounded-lg hover:bg-zinc-800 disabled:opacity-50 transition-colors"
                     >
                       {inviteExisting.isPending ? "Inviting..." : "Invite to Room"}
-                      <ChevronRight className="w-4 h-4" />
                     </button>
                   )}
-                  <div className="relative my-3">
-                    <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-gray-200" /></div>
-                    <div className="relative flex justify-center"><span className="px-2 bg-white text-xs text-gray-400">or</span></div>
+                  <div className="relative my-4">
+                    <div className="absolute inset-0 flex items-center">
+                      <div className="w-full border-t border-zinc-200" />
+                    </div>
+                    <div className="relative flex justify-center">
+                      <span className="px-2 bg-white text-xs text-zinc-400">or</span>
+                    </div>
                   </div>
                 </div>
               )}
 
-              {/* New agent button */}
               {!isCreatingNew ? (
                 <button
                   onClick={() => setIsCreatingNew(true)}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2.5 border-2 border-dashed border-gray-300 text-sm text-gray-600 rounded-lg hover:border-blue-300 hover:text-blue-600 transition-colors"
+                  className="w-full py-2.5 border-2 border-dashed border-zinc-300 text-sm text-zinc-500 rounded-xl hover:border-zinc-400 hover:text-zinc-700 transition-colors"
                 >
-                  <Bot className="w-4 h-4" />
-                  New Agent
+                  + New agent
                 </button>
               ) : (
                 <div className="space-y-3">
-                  <p className="text-xs font-medium text-gray-500">New agent details</p>
+                  <p className="text-xs font-medium text-zinc-500">New agent</p>
                   <input
                     autoFocus
                     type="text"
                     placeholder="Display name"
                     value={newDisplayName}
-                    onChange={(e) => {
-                      setNewDisplayName(e.target.value);
-                      if (!newName) setNewName(e.target.value.toLowerCase().replace(/\s+/g, "_"));
-                    }}
-                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    onChange={(e) => setNewDisplayName(e.target.value)}
+                    className="w-full border border-zinc-300 rounded-lg px-3 py-2.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
                   />
                   <input
                     type="text"
                     placeholder="Description (optional)"
                     value={newDescription}
                     onChange={(e) => setNewDescription(e.target.value)}
-                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-zinc-300 rounded-lg px-3 py-2.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
                   />
                   <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Provider</label>
+                    <label className="block text-xs font-medium text-zinc-700 mb-1.5">Provider</label>
                     <select
                       value={selectedProvider}
                       onChange={(e) => { setSelectedProvider(e.target.value); setProviderConfigValues({}); }}
-                      className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-zinc-300 rounded-lg px-3 py-2.5 text-sm text-zinc-900 focus:outline-none focus:ring-2 focus:ring-zinc-900 focus:border-transparent"
                     >
                       {providersData?.providers.map((p) => (
                         <option key={p.name} value={p.name}>{p.label}</option>
@@ -189,19 +186,21 @@ export function InviteAgentModal({ roomId, onClose }: Props) {
                     />
                   )}
                   {createAndInvite.isError && (
-                    <p className="text-xs text-red-600">{createAndInvite.error?.message}</p>
+                    <p className="text-xs text-red-600 bg-red-50 rounded-lg px-3 py-2">
+                      {createAndInvite.error?.message}
+                    </p>
                   )}
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 pt-1">
                     <button
                       onClick={() => setIsCreatingNew(false)}
-                      className="flex-1 px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50"
+                      className="flex-1 py-2.5 text-sm text-zinc-600 border border-zinc-300 rounded-lg hover:bg-zinc-50 transition-colors"
                     >
                       Back
                     </button>
                     <button
                       onClick={() => createAndInvite.mutate()}
                       disabled={!canSubmitNew || createAndInvite.isPending}
-                      className="flex-1 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                      className="flex-1 py-2.5 bg-zinc-900 text-white text-sm font-medium rounded-lg hover:bg-zinc-800 disabled:opacity-50 transition-colors"
                     >
                       {createAndInvite.isPending ? "Creating..." : "Create & Invite"}
                     </button>
@@ -211,28 +210,31 @@ export function InviteAgentModal({ roomId, onClose }: Props) {
             </div>
           )}
 
-          {/* Step: Done */}
           {step === "done" && createdApiKey && (
             <div className="space-y-4">
-              <div className="flex items-center gap-2 text-green-700">
-                <Check className="w-4 h-4" />
-                <span className="text-sm font-medium">Agent created and invited!</span>
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full bg-emerald-100 flex items-center justify-center">
+                  <Check className="w-3.5 h-3.5 text-emerald-700" />
+                </div>
+                <span className="text-sm font-medium text-zinc-900">Agent created and invited</span>
               </div>
               <div>
-                <p className="text-xs font-medium text-gray-700 mb-1.5">API Key — copy it now, won't be shown again</p>
-                <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
-                  <code className="flex-1 text-xs font-mono text-gray-800 truncate">{createdApiKey}</code>
-                  <button onClick={copyKey} className="shrink-0 text-gray-400 hover:text-gray-700">
-                    {copied ? <Check className="w-3.5 h-3.5 text-green-600" /> : <Copy className="w-3.5 h-3.5" />}
+                <p className="text-xs font-medium text-zinc-700 mb-2">
+                  API Key — save it now, won't be shown again
+                </p>
+                <div className="flex items-center gap-2 bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2.5">
+                  <code className="flex-1 text-xs font-mono text-zinc-700 truncate">{createdApiKey}</code>
+                  <button onClick={copyKey} className="shrink-0 text-zinc-400 hover:text-zinc-700 transition-colors">
+                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                   </button>
                 </div>
-                <p className="text-xs text-gray-500 mt-1.5">
-                  Your bot uses this key via the <code className="bg-gray-100 px-1 rounded">X-TW-Bot-Key</code> header to post messages.
+                <p className="text-xs text-zinc-400 mt-2">
+                  Send requests with <code className="bg-zinc-100 px-1 rounded">X-TW-Bot-Key: {createdApiKey.slice(0, 16)}…</code>
                 </p>
               </div>
               <button
                 onClick={onClose}
-                className="w-full px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
+                className="w-full py-2.5 bg-zinc-900 text-white text-sm font-medium rounded-lg hover:bg-zinc-800 transition-colors"
               >
                 Done
               </button>

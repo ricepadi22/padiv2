@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Bot, RotateCcw, Copy, Check } from "lucide-react";
+import { RotateCcw, Copy, Check } from "lucide-react";
 import { botsApi, type Bot as BotType } from "../api/bots.ts";
 import { BotStatusBadge } from "../components/bots/BotStatusBadge.tsx";
 
 const PROVIDER_LABELS: Record<string, string> = {
   http: "HTTP Webhook",
-  openclaw_gateway: "OpenClaw Gateway",
+  openclaw_gateway: "OpenClaw",
   claude_api: "Claude API",
 };
 
@@ -44,75 +44,73 @@ export function BotsPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="px-6 py-4 border-b border-gray-200 bg-white shrink-0">
-        <div className="flex items-center gap-2">
-          <Bot className="w-4 h-4 text-blue-600" />
-          <h1 className="text-sm font-semibold text-gray-900">Agents</h1>
-        </div>
-        <p className="text-xs text-gray-500 mt-0.5">Manage bots and their provider connections</p>
+      <div className="px-6 py-4 border-b border-zinc-200 shrink-0">
+        <h1 className="text-sm font-semibold text-zinc-900">Agents</h1>
+        <p className="text-xs text-zinc-400 mt-0.5">Manage agent connections and API keys</p>
       </div>
 
       <div className="flex-1 overflow-y-auto p-6">
         {isLoading ? (
-          <div className="text-center text-gray-400 text-sm py-8">Loading agents...</div>
+          <div className="text-center text-zinc-400 text-sm py-12">Loading...</div>
         ) : bots.length === 0 ? (
-          <div className="text-center text-gray-400 text-sm py-8">
-            No agents yet. Use "Invite Agent" in any Middle or Worker room to create one.
+          <div className="text-center py-12">
+            <p className="text-sm text-zinc-400">No agents yet.</p>
+            <p className="text-xs text-zinc-400 mt-1">Use "Invite Agent" in any Middle or Worker room to add one.</p>
           </div>
         ) : (
-          <div className="space-y-3 max-w-2xl">
+          <div className="space-y-2 max-w-2xl">
             {bots.map((bot: BotType) => {
               const newKey = rotatedKeys[bot.id];
               return (
-                <div key={bot.id} className="bg-white border border-gray-200 rounded-xl p-4">
-                  <div className="flex items-start justify-between gap-3">
+                <div key={bot.id} className="border border-zinc-200 rounded-xl p-4 bg-white">
+                  <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-semibold text-gray-900">{bot.displayName}</span>
+                        <span className="text-sm font-semibold text-zinc-900">{bot.displayName}</span>
                         <BotStatusBadge status={bot.status} />
-                        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-medium">
+                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-zinc-100 text-zinc-500 font-medium">
                           {PROVIDER_LABELS[bot.provider] ?? bot.provider}
                         </span>
                       </div>
                       {bot.description && (
-                        <p className="text-xs text-gray-500 mt-0.5 truncate">{bot.description}</p>
+                        <p className="text-xs text-zinc-400 mt-0.5">{bot.description}</p>
                       )}
-                      <div className="flex items-center gap-1 mt-2">
-                        <span className="text-xs text-gray-400 font-mono">
+                      <div className="flex items-center gap-1.5 mt-2">
+                        <code className="text-xs font-mono text-zinc-500">
                           {newKey ?? `${bot.apiKeyPrefix ?? "tw_bot_"}…`}
-                        </span>
+                        </code>
                         {newKey && (
                           <button
                             onClick={() => copyKey(bot.id, newKey)}
-                            className="text-gray-400 hover:text-gray-700"
+                            className="text-zinc-400 hover:text-zinc-700 transition-colors"
                           >
                             {copiedId === bot.id
-                              ? <Check className="w-3 h-3 text-green-600" />
+                              ? <Check className="w-3 h-3 text-emerald-600" />
                               : <Copy className="w-3 h-3" />}
                           </button>
                         )}
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={() => toggleStatus.mutate({
                           id: bot.id,
                           status: bot.status === "active" ? "paused" : "active",
                         })}
                         disabled={toggleStatus.isPending}
-                        className="text-xs px-2.5 py-1.5 border border-gray-300 rounded-lg text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                        className="text-xs px-2.5 py-1.5 border border-zinc-300 rounded-lg text-zinc-600 hover:bg-zinc-50 disabled:opacity-50 transition-colors"
                       >
                         {bot.status === "active" ? "Pause" : "Activate"}
                       </button>
                       <button
                         onClick={() => {
-                          if (confirm(`Rotate API key for ${bot.displayName}? The old key will stop working immediately.`)) {
+                          if (confirm(`Rotate API key for ${bot.displayName}? The old key stops working immediately.`)) {
                             rotateKey.mutate(bot.id);
                           }
                         }}
                         disabled={rotateKey.isPending}
-                        className="text-gray-400 hover:text-gray-600 disabled:opacity-50"
+                        className="text-zinc-400 hover:text-zinc-700 disabled:opacity-50 transition-colors"
                         title="Rotate API key"
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
@@ -121,7 +119,7 @@ export function BotsPage() {
                   </div>
 
                   {bot.lastActiveAt && (
-                    <p className="text-xs text-gray-400 mt-2">
+                    <p className="text-xs text-zinc-400 mt-2.5 pt-2.5 border-t border-zinc-100">
                       Last active {new Date(bot.lastActiveAt).toLocaleString()}
                     </p>
                   )}
