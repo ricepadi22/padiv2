@@ -193,16 +193,16 @@ export function PadiDetail({ padiId, currentUserId, onDeselect }: PadiDetailProp
         {/* ── Members tab ── */}
         {activeTab === "members" && (
           <div className="p-4 space-y-4">
-            {isAdmin && pendingCount > 0 && (
+            {isAdmin && (
               <div>
                 <p className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-2">
-                  Pending Requests ({pendingCount})
+                  Pending Requests
                 </p>
-                <JoinRequestList padiId={padiId} />
+                <JoinRequestList padiId={padiId} onApproved={() => void queryClient.invalidateQueries({ queryKey: ["padi", padiId] })} />
               </div>
             )}
             <div>
-              {isAdmin && pendingCount > 0 && (
+              {isAdmin && (
                 <p className="text-xs font-semibold text-zinc-500 uppercase tracking-widest mb-2">Members</p>
               )}
               <div className="space-y-1">

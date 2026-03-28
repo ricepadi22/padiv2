@@ -160,7 +160,18 @@ router.get("/:id", requireAuth, requireHuman, async (req: AuthRequest, res) => {
     hostBot = bot ?? null;
   }
 
-  res.json({ padi, members, hostBot });
+  // Include pending join request count for owners/admins
+  const myMembership = members.find((m) => m.userId === req.user!.id);
+  let pendingJoinRequestCount = 0;
+  if (myMembership && ["owner", "admin"].includes(myMembership.role)) {
+    const [pending] = await db
+      .select({ count: count() })
+      .from(joinRequests)
+      .where(and(eq(joinRequests.padiId, padi.id), eq(joinRequests.status, "pending")));
+    pendingJoinRequestCount = Number(pending?.count ?? 0);
+  }
+
+  res.json({ padi: { ...padi, pendingJoinRequestCount }, members, hostBot });
 });
 
 // ─── UPDATE ───────────────────────────────────────────────────────────────────

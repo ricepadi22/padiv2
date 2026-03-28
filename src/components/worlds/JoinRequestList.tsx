@@ -4,9 +4,10 @@ import { padisApi, type JoinRequest } from "../../api/padis.ts";
 
 interface JoinRequestListProps {
   padiId: string;
+  onApproved?: () => void;
 }
 
-export function JoinRequestList({ padiId }: JoinRequestListProps) {
+export function JoinRequestList({ padiId, onApproved }: JoinRequestListProps) {
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -17,9 +18,10 @@ export function JoinRequestList({ padiId }: JoinRequestListProps) {
   const review = useMutation({
     mutationFn: ({ requestId, status }: { requestId: string; status: "approved" | "rejected" }) =>
       padisApi.reviewJoinRequest(padiId, requestId, status),
-    onSuccess: () => {
+    onSuccess: (_result, { status }) => {
       void queryClient.invalidateQueries({ queryKey: ["padi", padiId, "join-requests"] });
       void queryClient.invalidateQueries({ queryKey: ["padis"] });
+      if (status === "approved") onApproved?.();
     },
   });
 
