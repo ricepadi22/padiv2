@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Message } from "../api/messages.ts";
+import { getStoredToken } from "../api/client.ts";
 
 type WsEvent =
   | { type: "connected"; userId?: string; botId?: string }
@@ -35,7 +36,9 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
     let reconnectTimer: ReturnType<typeof setTimeout>;
 
     function connect() {
-      socket = new WebSocket(WS_URL);
+      const token = getStoredToken();
+      const url = token ? `${WS_URL}?token=${encodeURIComponent(token)}` : WS_URL;
+      socket = new WebSocket(url);
       ws.current = socket;
 
       socket.onopen = () => setConnected(true);
