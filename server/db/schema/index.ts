@@ -6,3 +6,6 @@ export { roomMembers } from "./room_members.ts";
 export { messages } from "./messages.ts";
 export { presence } from "./presence.ts";
 export { transitions } from "./transitions.ts";
+export { padis, padiMembers } from "./padis.ts";
+export { tickets, ticketActivity } from "./tickets.ts";
+export { inviteTokens } from "./inviteTokens.ts";

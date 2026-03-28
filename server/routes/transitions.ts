@@ -2,7 +2,7 @@ import { Router } from "express";
 import { eq, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/client.js";
-import { rooms, roomMembers, messages, transitions } from "../db/schema/index.js";
+import { rooms, roomMembers, messages, transitions, tickets, ticketActivity } from "../db/schema/index.js";
 import { requireAuth, requireHuman, type AuthRequest } from "../middleware/auth.js";
 import { publishEvent } from "../realtime/ws.js";
 
@@ -152,9 +152,27 @@ router.post("/send-to-work", requireAuth, requireHuman, async (req: AuthRequest,
     reason: parsed.data.taskDescription,
   });
 
+  // Auto-create initial ticket from the task description
+  const [initialTicket] = await db.insert(tickets).values({
+    roomId: workerRoom!.id,
+    ticketNumber: 1,
+    title: parsed.data.name || parsed.data.taskDescription.slice(0, 100),
+    description: parsed.data.taskDescription,
+    createdByUserId: req.user!.id,
+    status: "todo",
+  }).returning();
+
+  await db.insert(ticketActivity).values({
+    ticketId: initialTicket!.id,
+    actorType: "system",
+    action: "created",
+    toStatus: "todo",
+    comment: "Auto-created from Send to Work",
+  });
+
   publishEvent(parsed.data.fromRoomId, { type: "transition", transitionType: "send_to_work", message: sysMsg, workerRoomId: workerRoom!.id });
 
-  res.status(201).json({ workerRoom });
+  res.status(201).json({ workerRoom, initialTicket });
 });
 
 // Meeting request: bot asks for human input

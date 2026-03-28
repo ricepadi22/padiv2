@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { roomsApi, type WorldType } from "../api/rooms.ts";
 import { WorldNav } from "../components/worlds/WorldNav.tsx";
 import { RoomList } from "../components/worlds/RoomList.tsx";
+import { PadiList } from "../components/worlds/PadiList.tsx";
 
 export function WorldsPage() {
   const { world = "middle" } = useParams<{ world?: string }>();
@@ -12,16 +13,31 @@ export function WorldsPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [newRoomName, setNewRoomName] = useState("");
   const [newRoomDesc, setNewRoomDesc] = useState("");
+  const [selectedPadiId, setSelectedPadiId] = useState<string | null>(null);
 
   const currentWorld = world as WorldType;
 
   const { data, isLoading } = useQuery({
-    queryKey: ["rooms", currentWorld],
-    queryFn: () => roomsApi.list(currentWorld),
+    queryKey: ["rooms", currentWorld, selectedPadiId],
+    queryFn: () => {
+      if (currentWorld === "higher" && selectedPadiId) {
+        // Fetch rooms for the selected padi
+        return roomsApi.list(currentWorld).then(({ rooms }) => ({
+          rooms: rooms.filter((r) => r.padiId === selectedPadiId),
+        }));
+      }
+      return roomsApi.list(currentWorld);
+    },
   });
 
   const createRoom = useMutation({
-    mutationFn: () => roomsApi.create({ world: currentWorld, name: newRoomName, description: newRoomDesc || undefined }),
+    mutationFn: () =>
+      roomsApi.create({
+        world: currentWorld,
+        name: newRoomName,
+        description: newRoomDesc || undefined,
+        padiId: currentWorld === "higher" && selectedPadiId ? selectedPadiId : undefined,
+      }),
     onSuccess: ({ room }) => {
       void queryClient.invalidateQueries({ queryKey: ["rooms"] });
       setShowCreate(false);
@@ -31,19 +47,36 @@ export function WorldsPage() {
     },
   });
 
+  const canCreateRoom = currentWorld !== "worker" && (currentWorld !== "higher" || !!selectedPadiId);
+
   return (
     <div className="flex flex-col h-full">
       <WorldNav />
-      <div className="flex-1 overflow-hidden">
-        {isLoading ? (
-          <div className="flex items-center justify-center h-full text-gray-500 text-sm">Loading rooms...</div>
-        ) : (
-          <RoomList
-            rooms={data?.rooms ?? []}
-            world={currentWorld}
-            onCreateRoom={currentWorld !== "worker" ? () => setShowCreate(true) : undefined}
+      <div className="flex-1 overflow-hidden flex">
+        {/* Higher World: show padi list panel on the left */}
+        {currentWorld === "higher" && (
+          <PadiList
+            selectedPadiId={selectedPadiId}
+            onSelect={(id) => setSelectedPadiId(id === selectedPadiId ? null : id)}
           />
         )}
+
+        <div className="flex-1 overflow-hidden">
+          {isLoading ? (
+            <div className="flex items-center justify-center h-full text-gray-500 text-sm">Loading rooms...</div>
+          ) : (
+            <RoomList
+              rooms={data?.rooms ?? []}
+              world={currentWorld}
+              onCreateRoom={canCreateRoom ? () => setShowCreate(true) : undefined}
+              emptyMessage={
+                currentWorld === "higher" && !selectedPadiId
+                  ? "Select a padi on the left to see its rooms"
+                  : undefined
+              }
+            />
+          )}
+        </div>
       </div>
 
       {showCreate && (
@@ -57,7 +90,7 @@ export function WorldsPage() {
                 value={newRoomName}
                 onChange={(e) => setNewRoomName(e.target.value)}
                 placeholder="e.g. Strategy Discussion"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-500"
               />
             </div>
             <div>
@@ -66,7 +99,7 @@ export function WorldsPage() {
                 value={newRoomDesc}
                 onChange={(e) => setNewRoomDesc(e.target.value)}
                 placeholder="What is this room for?"
-                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-blue-500"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-zinc-500"
               />
             </div>
             <div className="flex gap-3">
@@ -79,7 +112,7 @@ export function WorldsPage() {
               <button
                 onClick={() => createRoom.mutate()}
                 disabled={!newRoomName.trim() || createRoom.isPending}
-                className="flex-1 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50"
+                className="flex-1 py-2 bg-zinc-900 text-white rounded-lg text-sm hover:bg-zinc-800 disabled:opacity-50"
               >
                 {createRoom.isPending ? "Creating..." : "Create Room"}
               </button>

@@ -9,7 +9,10 @@ type WsEvent =
   | { type: "message.edited"; roomId: string; message: Message }
   | { type: "message.deleted"; roomId: string; messageId: string }
   | { type: "presence.typing"; roomId: string; userId?: string; botId?: string }
-  | { type: "transition"; roomId: string; transitionType: string; message?: Message };
+  | { type: "transition"; roomId: string; transitionType: string; message?: Message }
+  | { type: "ticket.created"; roomId: string; ticket: unknown }
+  | { type: "ticket.updated"; roomId: string; ticket: unknown }
+  | { type: "ticket.checkout"; roomId: string; ticket: unknown };
 
 type EventHandler = (event: WsEvent) => void;
 

@@ -21,10 +21,12 @@ interface RoomListProps {
   rooms: Room[];
   world: WorldType;
   onCreateRoom?: () => void;
+  emptyMessage?: string;
 }
 
-export function RoomList({ rooms, world, onCreateRoom }: RoomListProps) {
+export function RoomList({ rooms, world, onCreateRoom, emptyMessage }: RoomListProps) {
   const { empty, createLabel } = worldConfig[world];
+  const displayEmpty = emptyMessage ?? empty;
 
   return (
     <div className="flex flex-col h-full">
@@ -42,7 +44,7 @@ export function RoomList({ rooms, world, onCreateRoom }: RoomListProps) {
       </div>
       <div className="flex-1 overflow-y-auto">
         {rooms.length === 0 ? (
-          <div className="px-4 py-6 text-sm text-zinc-400 text-center leading-relaxed">{empty}</div>
+          <div className="px-4 py-6 text-sm text-zinc-400 text-center leading-relaxed">{displayEmpty}</div>
         ) : (
           rooms.map((room) => (
             <Link

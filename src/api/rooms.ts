@@ -7,6 +7,7 @@ export type MemberType = "human" | "bot";
 export interface Room {
   id: string;
   world: WorldType;
+  padiId?: string;
   name: string;
   description?: string;
   status: "active" | "archived";
@@ -34,7 +35,7 @@ export const roomsApi = {
   get: (id: string) =>
     apiFetch<{ room: Room; members: RoomMember[] }>(`/api/rooms/${id}`),
 
-  create: (data: { world: WorldType; name: string; description?: string }) =>
+  create: (data: { world: WorldType; name: string; description?: string; padiId?: string }) =>
     apiFetch<{ room: Room }>("/api/rooms", { method: "POST", body: JSON.stringify(data) }),
 
   update: (id: string, data: Partial<{ name: string; description: string; status: "active" | "archived" }>) =>

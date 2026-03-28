@@ -5,6 +5,9 @@ import roomRoutes from "./routes/rooms.js";
 import messageRoutes from "./routes/messages.js";
 import transitionRoutes from "./routes/transitions.js";
 import botRoutes from "./routes/bots.js";
+import padiRoutes from "./routes/padis.js";
+import ticketRoutes from "./routes/tickets.js";
+import inviteRoutes from "./routes/invites.js";
 
 export function createApp() {
   const app = express();
@@ -21,6 +24,9 @@ export function createApp() {
   app.use("/api/rooms/:roomId/messages", messageRoutes);
   app.use("/api/transitions", transitionRoutes);
   app.use("/api/bots", botRoutes);
+  app.use("/api/padis", padiRoutes);
+  app.use("/api/rooms/:roomId/tickets", ticketRoutes);
+  app.use("/api/invites", inviteRoutes);
 
   app.get("/api/health", (_req, res) => {
     res.json({ ok: true, ts: new Date().toISOString() });

@@ -7,13 +7,15 @@ import { requireAuth, requireHuman, type AuthRequest } from "../middleware/auth.
 
 const router = Router();
 
-// List rooms, optionally filtered by world
+// List rooms, optionally filtered by world and/or padiId
 router.get("/", requireAuth, async (req: AuthRequest, res) => {
   const world = req.query.world as string | undefined;
+  const padiId = req.query.padiId as string | undefined;
   const query = db.select().from(rooms).where(
     and(
       eq(rooms.status, "active"),
       world ? eq(rooms.world, world) : undefined,
+      padiId ? eq(rooms.padiId, padiId) : undefined,
     )
   );
   const result = await query;
@@ -26,6 +28,7 @@ router.post("/", requireAuth, requireHuman, async (req: AuthRequest, res) => {
     world: z.enum(["higher", "middle", "worker"]),
     name: z.string().min(1).max(100),
     description: z.string().optional(),
+    padiId: z.string().uuid().optional(), // only for Higher World rooms
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {

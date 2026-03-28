@@ -9,6 +9,7 @@ export const bots = pgTable("bots", {
   avatarUrl: text("avatar_url"),
   description: text("description"),
   ownerUserId: uuid("owner_user_id").references(() => users.id),
+  parentBotId: uuid("parent_bot_id"), // set when bot is spawned by another bot
   apiKey: text("api_key").notNull().unique(), // kept during migration window, will be dropped later
   apiKeyHash: text("api_key_hash"),
   apiKeyPrefix: text("api_key_prefix"), // first 12 chars of raw key, safe to display

@@ -4,8 +4,8 @@ import { useAuth } from "../context/AuthContext.tsx";
 
 const worlds = [
   { to: "/worlds/higher", label: "Higher World", icon: Shield, dot: "bg-amber-400" },
-  { to: "/worlds/middle", label: "Middle World", icon: MessageSquare, dot: "bg-blue-400" },
-  { to: "/worlds/worker", label: "Worker World", icon: Hammer, dot: "bg-purple-400" },
+  { to: "/worlds/middle", label: "Middle World", icon: MessageSquare, dot: "bg-green-400" },
+  { to: "/worlds/worker", label: "Worker World", icon: Hammer, dot: "bg-blue-400" },
 ];
 
 function initials(name: string) {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bot, LogOut, Send as SendIcon, Users } from "lucide-react";
+import { ArrowLeft, Bot, LogOut, Send as SendIcon, Users, Ticket, MessageSquare } from "lucide-react";
 import { roomsApi } from "../api/rooms.ts";
 import { messagesApi } from "../api/messages.ts";
 import { transitionsApi } from "../api/transitions.ts";
@@ -11,12 +11,13 @@ import { MessageBubble } from "../components/worlds/MessageBubble.tsx";
 import { MessageComposer } from "../components/worlds/MessageComposer.tsx";
 import { MeetingRequestBanner } from "../components/worlds/MeetingRequestBanner.tsx";
 import { InviteAgentModal } from "../components/bots/InviteAgentModal.tsx";
+import { TicketBoard } from "../components/worlds/TicketBoard.tsx";
 import type { Message } from "../api/messages.ts";
 
 const worldAccent: Record<string, string> = {
   higher: "text-amber-600 bg-amber-50 border-amber-200",
-  middle: "text-blue-600 bg-blue-50 border-blue-200",
-  worker: "text-purple-600 bg-purple-50 border-purple-200",
+  middle: "text-green-600 bg-green-50 border-green-200",
+  worker: "text-blue-600 bg-blue-50 border-blue-200",
 };
 
 export function RoomPage() {
@@ -28,6 +29,7 @@ export function RoomPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
   const [localMessages, setLocalMessages] = useState<Message[]>([]);
   const [showInviteAgent, setShowInviteAgent] = useState(false);
+  const [activeTab, setActiveTab] = useState<"chat" | "tickets">("chat");
 
   const { data: roomData } = useQuery({
     queryKey: ["room", roomId],
@@ -124,11 +126,33 @@ export function RoomPage() {
           {room?.world === "middle" && (
             <button
               onClick={() => void navigate(`/rooms/${roomId}/dispatch`)}
-              className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 text-purple-700 bg-purple-50 border border-purple-200 rounded-lg hover:bg-purple-100 transition-colors"
+              className="flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 text-blue-700 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100 transition-colors"
             >
               <SendIcon className="w-3 h-3" />
               Send to Work
             </button>
+          )}
+          {room?.world === "worker" && (
+            <div className="flex items-center border border-zinc-200 rounded-lg overflow-hidden">
+              <button
+                onClick={() => setActiveTab("chat")}
+                className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 transition-colors ${
+                  activeTab === "chat" ? "bg-zinc-100 text-zinc-900" : "text-zinc-400 hover:text-zinc-700"
+                }`}
+              >
+                <MessageSquare className="w-3 h-3" />
+                Chat
+              </button>
+              <button
+                onClick={() => setActiveTab("tickets")}
+                className={`flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 transition-colors ${
+                  activeTab === "tickets" ? "bg-zinc-100 text-zinc-900" : "text-zinc-400 hover:text-zinc-700"
+                }`}
+              >
+                <Ticket className="w-3 h-3" />
+                Tickets
+              </button>
+            </div>
           )}
           {canInviteAgents && (
             <button
@@ -155,41 +179,50 @@ export function RoomPage() {
         </div>
       )}
 
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto py-3">
-        {messages.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-sm text-zinc-400">
-            No messages yet
+      {/* Tickets view (Worker World only) */}
+      {room?.world === "worker" && activeTab === "tickets" && roomId ? (
+        <div className="flex-1 overflow-hidden">
+          <TicketBoard roomId={roomId} />
+        </div>
+      ) : (
+        <>
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto py-3">
+            {messages.length === 0 ? (
+              <div className="flex items-center justify-center h-full text-sm text-zinc-400">
+                No messages yet
+              </div>
+            ) : (
+              messages.map((msg) => (
+                <MessageBubble
+                  key={msg.id}
+                  message={msg}
+                  authorName={
+                    msg.authorType === "system"
+                      ? "System"
+                      : msg.authorUserId === user?.id
+                      ? (user?.displayName ?? "You")
+                      : `User ${msg.authorUserId?.slice(0, 6)}`
+                  }
+                />
+              ))
+            )}
+            <div ref={bottomRef} />
           </div>
-        ) : (
-          messages.map((msg) => (
-            <MessageBubble
-              key={msg.id}
-              message={msg}
-              authorName={
-                msg.authorType === "system"
-                  ? "System"
-                  : msg.authorUserId === user?.id
-                  ? (user?.displayName ?? "You")
-                  : `User ${msg.authorUserId?.slice(0, 6)}`
-              }
-            />
-          ))
-        )}
-        <div ref={bottomRef} />
-      </div>
 
-      {/* Composer */}
-      <div className="shrink-0">
-        <MessageComposer
-          onSend={(body) => postMessage.mutate(body)}
-          disabled={postMessage.isPending}
-          observerMode={isObserver}
-        />
-      </div>
+          {/* Composer */}
+          <div className="shrink-0">
+            <MessageComposer
+              onSend={(body) => postMessage.mutate(body)}
+              disabled={postMessage.isPending}
+              observerMode={isObserver}
+            />
+          </div>
+        </>
+      )}
 
       {showInviteAgent && roomId && (
-        <InviteAgentModal roomId={roomId} onClose={() => setShowInviteAgent(false)} />
+        <InviteAgentModal roomId={roomId} world={room?.world} onClose={() => setShowInviteAgent(false)} />
       )}
     </div>
   );
