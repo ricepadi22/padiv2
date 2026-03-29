@@ -6,12 +6,16 @@ export const padis = pgTable("padis", {
   id: uuid("id").primaryKey().defaultRandom(),
   name: text("name").notNull(),
   description: text("description"),
+  goals: text("goals"), // goals / mission statement
   avatarUrl: text("avatar_url"),
   createdByUserId: uuid("created_by_user_id").references(() => users.id),
   status: text("status").notNull().default("active"), // active | archived
   isPublic: boolean("is_public").notNull().default(false),
   requireApproval: boolean("require_approval").notNull().default(true),
   hostBotId: uuid("host_bot_id").references(() => bots.id),
+  // LLM environment for all padi-level bots:
+  // { type: "api_key" | "oauth", config: { apiKey?, accessToken?, refreshToken?, model?, systemPrompt? } }
+  llmEnvironment: jsonb("llm_environment"),
   metadata: jsonb("metadata").default({}),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -22,6 +26,7 @@ export const padiMembers = pgTable("padi_members", {
   padiId: uuid("padi_id").notNull().references(() => padis.id, { onDelete: "cascade" }),
   userId: uuid("user_id").notNull().references(() => users.id),
   role: text("role").notNull().default("member"), // owner | admin | member
+  personalBotId: uuid("personal_bot_id").references(() => bots.id), // member's linked OpenClaw bot
   joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
   leftAt: timestamp("left_at", { withTimezone: true }),
 });

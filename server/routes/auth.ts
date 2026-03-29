@@ -3,8 +3,9 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { eq } from "drizzle-orm";
 import { z } from "zod";
+import { randomBytes, createHash } from "crypto";
 import { db } from "../db/client.js";
-import { users } from "../db/schema/index.js";
+import { users, padis } from "../db/schema/index.js";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 
 const router = Router();
@@ -101,6 +102,114 @@ router.patch("/me", requireAuth, async (req: AuthRequest, res) => {
   }
   const [updated] = await db.update(users).set({ ...parsed.data, updatedAt: new Date() }).where(eq(users.id, req.user.id)).returning();
   res.json({ user: safeUser(updated!) });
+});
+
+// ─── Anthropic OAuth ──────────────────────────────────────────────────────────
+// Stores PKCE verifier keyed by state to survive the redirect round-trip
+const pendingOAuth = new Map<string, { padiId: string; codeVerifier: string }>();
+
+router.get("/anthropic", requireAuth, async (req: AuthRequest, res) => {
+  if (!req.user) { res.status(401).json({ error: "Unauthorized" }); return; }
+
+  const padiId = req.query.padiId as string | undefined;
+  if (!padiId) { res.status(400).json({ error: "padiId is required" }); return; }
+
+  const clientId = process.env.ANTHROPIC_OAUTH_CLIENT_ID;
+  if (!clientId) {
+    res.status(501).json({ error: "Anthropic OAuth not configured. Set ANTHROPIC_OAUTH_CLIENT_ID and ANTHROPIC_OAUTH_CLIENT_SECRET." });
+    return;
+  }
+
+  // PKCE
+  const codeVerifier = randomBytes(64).toString("base64url");
+  const codeChallenge = createHash("sha256").update(codeVerifier).digest("base64url");
+  const state = randomBytes(16).toString("hex");
+
+  pendingOAuth.set(state, { padiId, codeVerifier });
+  // Auto-expire after 10 minutes
+  setTimeout(() => pendingOAuth.delete(state), 10 * 60 * 1000);
+
+  const redirectUri = `${process.env.API_BASE_URL ?? "http://localhost:3200"}/api/auth/anthropic/callback`;
+  const params = new URLSearchParams({
+    response_type: "code",
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    scope: "org:read api:inference",
+    state,
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
+  });
+
+  res.redirect(`https://claude.ai/oauth/authorize?${params.toString()}`);
+});
+
+router.get("/anthropic/callback", async (req, res) => {
+  const code = req.query.code as string | undefined;
+  const state = req.query.state as string | undefined;
+  const error = req.query.error as string | undefined;
+
+  const frontendBase = process.env.FRONTEND_URL ?? "http://localhost:5173";
+
+  if (error) {
+    res.redirect(`${frontendBase}/?oauth_error=${encodeURIComponent(error)}`);
+    return;
+  }
+  if (!code || !state) {
+    res.redirect(`${frontendBase}/?oauth_error=missing_params`);
+    return;
+  }
+
+  const pending = pendingOAuth.get(state);
+  if (!pending) {
+    res.redirect(`${frontendBase}/?oauth_error=invalid_state`);
+    return;
+  }
+  pendingOAuth.delete(state);
+
+  const clientId = process.env.ANTHROPIC_OAUTH_CLIENT_ID!;
+  const clientSecret = process.env.ANTHROPIC_OAUTH_CLIENT_SECRET!;
+  const redirectUri = `${process.env.API_BASE_URL ?? "http://localhost:3200"}/api/auth/anthropic/callback`;
+
+  try {
+    const tokenRes = await fetch("https://api.anthropic.com/oauth/token", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        redirect_uri: redirectUri,
+        client_id: clientId,
+        client_secret: clientSecret,
+        code_verifier: pending.codeVerifier,
+      }),
+    });
+
+    if (!tokenRes.ok) {
+      const err = await tokenRes.text();
+      console.error("Anthropic token exchange failed:", err);
+      res.redirect(`${frontendBase}/?oauth_error=token_exchange_failed`);
+      return;
+    }
+
+    const tokens = await tokenRes.json() as { access_token: string; refresh_token?: string; expires_in?: number };
+
+    // Store tokens in padi's llmEnvironment
+    await db.update(padis).set({
+      llmEnvironment: {
+        type: "oauth",
+        config: {
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token ?? null,
+        },
+      },
+      updatedAt: new Date(),
+    }).where(eq(padis.id, pending.padiId));
+
+    res.redirect(`${frontendBase}/worlds/higher?oauth_success=1&padiId=${pending.padiId}`);
+  } catch (err) {
+    console.error("Anthropic OAuth callback error:", err);
+    res.redirect(`${frontendBase}/?oauth_error=server_error`);
+  }
 });
 
 function signToken(user: typeof users.$inferSelect) {

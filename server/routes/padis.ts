@@ -1,9 +1,9 @@
 import { Router } from "express";
-import { eq, and, isNull, ne, ilike, sql, count } from "drizzle-orm";
+import { eq, and, isNull, ilike, count } from "drizzle-orm";
 import { z } from "zod";
 import crypto from "crypto";
 import { db } from "../db/client.js";
-import { padis, padiMembers, rooms, users, bots, roomMembers, joinRequests } from "../db/schema/index.js";
+import { padis, padiMembers, rooms, users, bots, roomMembers, joinRequests, inviteTokens } from "../db/schema/index.js";
 import { requireAuth, requireHuman, type AuthRequest } from "../middleware/auth.js";
 
 const router = Router();
@@ -113,17 +113,27 @@ router.get("/", requireAuth, requireHuman, async (req: AuthRequest, res) => {
 
 // ─── CREATE ───────────────────────────────────────────────────────────────────
 router.post("/", requireAuth, requireHuman, async (req: AuthRequest, res) => {
+  const llmEnvSchema = z.object({
+    type: z.enum(["api_key", "oauth"]),
+    config: z.record(z.unknown()),
+  }).optional();
+
   const schema = z.object({
     name: z.string().min(1).max(100),
     description: z.string().optional(),
+    goals: z.string().optional(),
     isPublic: z.boolean().optional(),
     requireApproval: z.boolean().optional(),
+    llmEnvironment: llmEnvSchema,
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
 
+  const { llmEnvironment, ...padiFields } = parsed.data;
+
   const [padi] = await db.insert(padis).values({
-    ...parsed.data,
+    ...padiFields,
+    llmEnvironment: llmEnvironment ?? null,
     createdByUserId: req.user!.id,
   }).returning();
 
@@ -179,6 +189,7 @@ router.patch("/:id", requireAuth, requireHuman, async (req: AuthRequest, res) =>
   const schema = z.object({
     name: z.string().min(1).max(100).optional(),
     description: z.string().optional(),
+    goals: z.string().optional(),
     status: z.enum(["active", "archived"]).optional(),
     isPublic: z.boolean().optional(),
     requireApproval: z.boolean().optional(),
@@ -338,12 +349,108 @@ router.get("/:id/rooms", requireAuth, requireHuman, async (req: AuthRequest, res
   res.json({ rooms: result });
 });
 
+// ─── GET LLM ENVIRONMENT (masked) ────────────────────────────────────────────
+router.get("/:id/llm-env", requireAuth, requireHuman, async (req: AuthRequest, res) => {
+  const [membership] = await db.select().from(padiMembers).where(
+    and(eq(padiMembers.padiId, req.params.id!), eq(padiMembers.userId, req.user!.id), isNull(padiMembers.leftAt))
+  ).limit(1);
+  if (!membership || !["owner", "admin"].includes(membership.role)) {
+    res.status(403).json({ error: "Only padi owners/admins can view LLM environment" }); return;
+  }
+
+  const [padi] = await db.select({ llmEnvironment: padis.llmEnvironment }).from(padis).where(eq(padis.id, req.params.id!)).limit(1);
+  if (!padi) { res.status(404).json({ error: "Padi not found" }); return; }
+
+  const llmEnv = padi.llmEnvironment as { type: string; config: Record<string, unknown> } | null;
+  if (!llmEnv) { res.json({ llmEnvironment: null }); return; }
+
+  // Mask sensitive fields
+  const masked = {
+    type: llmEnv.type,
+    config: {
+      ...llmEnv.config,
+      apiKey: llmEnv.config.apiKey ? `...${String(llmEnv.config.apiKey).slice(-4)}` : undefined,
+      accessToken: llmEnv.config.accessToken ? "connected" : undefined,
+      refreshToken: undefined,
+    },
+  };
+  res.json({ llmEnvironment: masked });
+});
+
+// ─── SET LLM ENVIRONMENT ─────────────────────────────────────────────────────
+router.patch("/:id/llm-env", requireAuth, requireHuman, async (req: AuthRequest, res) => {
+  const schema = z.object({
+    type: z.enum(["api_key", "oauth"]),
+    config: z.object({
+      apiKey: z.string().optional(),
+      model: z.string().optional(),
+      systemPrompt: z.string().optional(),
+    }),
+  });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+
+  const [membership] = await db.select().from(padiMembers).where(
+    and(eq(padiMembers.padiId, req.params.id!), eq(padiMembers.userId, req.user!.id), isNull(padiMembers.leftAt))
+  ).limit(1);
+  if (!membership || !["owner", "admin"].includes(membership.role)) {
+    res.status(403).json({ error: "Only padi owners/admins can update LLM environment" }); return;
+  }
+
+  if (parsed.data.type === "api_key" && !parsed.data.config.apiKey) {
+    res.status(400).json({ error: "apiKey is required for api_key type" }); return;
+  }
+
+  await db.update(padis).set({
+    llmEnvironment: parsed.data,
+    updatedAt: new Date(),
+  }).where(eq(padis.id, req.params.id!));
+
+  res.json({ ok: true });
+});
+
+// ─── CLEAR LLM ENVIRONMENT ───────────────────────────────────────────────────
+router.delete("/:id/llm-env", requireAuth, requireHuman, async (req: AuthRequest, res) => {
+  const [membership] = await db.select().from(padiMembers).where(
+    and(eq(padiMembers.padiId, req.params.id!), eq(padiMembers.userId, req.user!.id), isNull(padiMembers.leftAt))
+  ).limit(1);
+  if (!membership || membership.role !== "owner") {
+    res.status(403).json({ error: "Only the padi owner can clear the LLM environment" }); return;
+  }
+
+  await db.update(padis).set({ llmEnvironment: null, updatedAt: new Date() }).where(eq(padis.id, req.params.id!));
+  res.json({ ok: true });
+});
+
+// ─── GENERATE PERSONAL BOT INVITE TOKEN (padi-level) ─────────────────────────
+// The token recipient (OpenClaw bot) accepts it → gets linked as the member's personalBotId
+router.post("/:id/personal-bot-invite", requireAuth, requireHuman, async (req: AuthRequest, res) => {
+  const [padi] = await db.select().from(padis).where(eq(padis.id, req.params.id!)).limit(1);
+  if (!padi) { res.status(404).json({ error: "Padi not found" }); return; }
+
+  const [membership] = await db.select().from(padiMembers).where(
+    and(eq(padiMembers.padiId, req.params.id!), eq(padiMembers.userId, req.user!.id), isNull(padiMembers.leftAt))
+  ).limit(1);
+  if (!membership) { res.status(403).json({ error: "You must be a padi member to generate a personal bot invite" }); return; }
+
+  const token = `padi_invite_${crypto.randomUUID().replace(/-/g, "")}`;
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+  const [invite] = await db.insert(inviteTokens).values({
+    token,
+    padiId: padi.id,
+    createdByUserId: req.user!.id,
+    expiresAt,
+  }).returning();
+
+  res.status(201).json({ token: invite!.token, expiresAt: invite!.expiresAt });
+});
+
 // ─── SET UP / REPLACE AI HOST ─────────────────────────────────────────────────
 router.post("/:id/host", requireAuth, requireHuman, async (req: AuthRequest, res) => {
   const schema = z.object({
     displayName: z.string().min(1).max(100),
-    provider: z.enum(["claude_api", "http", "openclaw_gateway"]).default("claude_api"),
-    providerConfig: z.record(z.unknown()).optional(),
+    systemPrompt: z.string().optional(),
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
@@ -359,11 +466,10 @@ router.post("/:id/host", requireAuth, requireHuman, async (req: AuthRequest, res
   const [padi] = await db.select().from(padis).where(eq(padis.id, req.params.id!)).limit(1);
   if (!padi) { res.status(404).json({ error: "Padi not found" }); return; }
 
-  // Build default system prompt if not provided
-  const config = (parsed.data.providerConfig ?? {}) as Record<string, unknown>;
-  if (!config.systemPrompt) {
-    config.systemPrompt = `You are ${parsed.data.displayName}, the AI host of the "${padi.name}" padi. Your role is to spawn and manage padi-local worker bots on behalf of the CEO agent. When the CEO requests workers, use the spawn-worker API. Coordinate workers, track task progress, and report status. Be concise and action-oriented.`;
-  }
+  const systemPrompt = parsed.data.systemPrompt ??
+    `You are ${parsed.data.displayName}, the AI host of the "${padi.name}" padi. ` +
+    `Spawn and manage worker bots on behalf of the team. Use the spawn-worker API to create sub-agents for tasks. ` +
+    `Coordinate work, track progress, and report status. Be concise and action-oriented.`;
 
   // Generate API key
   const rawKey = `tw_bot_${crypto.randomUUID()}`;
@@ -371,6 +477,7 @@ router.post("/:id/host", requireAuth, requireHuman, async (req: AuthRequest, res
   const apiKeyPrefix = rawKey.slice(0, 12);
   const botName = parsed.data.displayName.toLowerCase().replace(/\s+/g, "_") + "_host";
 
+  // Host bot uses padi_lm provider — LLM credentials come from padi.llmEnvironment
   const [bot] = await db.insert(bots).values({
     name: botName,
     displayName: parsed.data.displayName,
@@ -379,8 +486,8 @@ router.post("/:id/host", requireAuth, requireHuman, async (req: AuthRequest, res
     apiKey: rawKey,
     apiKeyHash,
     apiKeyPrefix,
-    provider: parsed.data.provider,
-    providerConfig: config,
+    provider: "padi_lm",
+    providerConfig: { padiId: padi.id, systemPrompt },
     status: "active",
     type: "general",
   }).returning();
@@ -388,7 +495,7 @@ router.post("/:id/host", requireAuth, requireHuman, async (req: AuthRequest, res
   // Update padi's hostBotId
   await db.update(padis).set({ hostBotId: bot!.id, updatedAt: new Date() }).where(eq(padis.id, padi.id));
 
-  // Auto-add host bot to existing Middle + Worker rooms in this padi (not Higher — HW is humans-only)
+  // Auto-add host bot to existing Middle + Worker rooms in this padi
   const padiRooms = await db.select().from(rooms).where(
     and(eq(rooms.padiId, padi.id), eq(rooms.status, "active"))
   );
@@ -408,7 +515,7 @@ router.post("/:id/host", requireAuth, requireHuman, async (req: AuthRequest, res
 router.patch("/:id/host", requireAuth, requireHuman, async (req: AuthRequest, res) => {
   const schema = z.object({
     displayName: z.string().min(1).max(100).optional(),
-    providerConfig: z.record(z.unknown()).optional(),
+    systemPrompt: z.string().optional(),
     status: z.enum(["active", "paused"]).optional(),
   });
   const parsed = schema.safeParse(req.body);
@@ -424,8 +531,18 @@ router.patch("/:id/host", requireAuth, requireHuman, async (req: AuthRequest, re
   const [padi] = await db.select().from(padis).where(eq(padis.id, req.params.id!)).limit(1);
   if (!padi?.hostBotId) { res.status(404).json({ error: "No AI host configured" }); return; }
 
+  const { systemPrompt, ...directUpdates } = parsed.data;
+  const updateSet: Record<string, unknown> = { ...directUpdates, updatedAt: new Date() };
+
+  // If systemPrompt changed, update it inside providerConfig
+  if (systemPrompt !== undefined) {
+    const [currentBot] = await db.select({ providerConfig: bots.providerConfig }).from(bots).where(eq(bots.id, padi.hostBotId)).limit(1);
+    const currentConfig = (currentBot?.providerConfig ?? {}) as Record<string, unknown>;
+    updateSet.providerConfig = { ...currentConfig, systemPrompt };
+  }
+
   const [updated] = await db.update(bots)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set(updateSet)
     .where(eq(bots.id, padi.hostBotId))
     .returning();
 

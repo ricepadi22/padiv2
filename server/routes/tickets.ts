@@ -2,8 +2,8 @@ import { Router } from "express";
 import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/client.js";
-import { rooms, tickets, ticketActivity, bots } from "../db/schema/index.js";
-import { requireAuth, requireHuman, type AuthRequest } from "../middleware/auth.js";
+import { rooms, tickets, ticketActivity, bots, padis } from "../db/schema/index.js";
+import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { publishEvent } from "../realtime/ws.js";
 
 // Note: this router is mounted with mergeParams: true at /api/rooms/:roomId/tickets
@@ -32,6 +32,63 @@ async function logActivity(ticketId: string, opts: {
 }) {
   await db.insert(ticketActivity).values({ ticketId, ...opts });
 }
+
+// GET /api/rooms/:roomId/tickets/next — autonomous bot polls for next available ticket
+// Atomically claims (checks out) the next unchecked-out todo/backlog ticket.
+// Must be before the /:ticketId route to avoid being treated as a UUID.
+router.get("/next", requireAuth, async (req: AuthRequest, res) => {
+  if (!req.botId) {
+    res.status(403).json({ error: "Only bots can use the /next endpoint" });
+    return;
+  }
+
+  const room = await getWorkerRoom(req.params.roomId!);
+  if (!room) {
+    res.status(400).json({ error: "Tickets only available in Worker World rooms" });
+    return;
+  }
+
+  // Atomic: pick the oldest unchecked-out todo/backlog ticket and immediately check it out
+  const result = await db.execute(sql`
+    UPDATE tickets
+    SET checked_out_by_bot_id = ${req.botId},
+        checked_out_at = NOW(),
+        status = 'in_progress',
+        started_at = COALESCE(started_at, NOW()),
+        updated_at = NOW()
+    WHERE id = (
+      SELECT id FROM tickets
+      WHERE room_id = ${room.id}
+        AND status IN ('todo', 'backlog')
+        AND checked_out_by_bot_id IS NULL
+      ORDER BY
+        CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END,
+        created_at ASC
+      LIMIT 1
+      FOR UPDATE SKIP LOCKED
+    )
+    RETURNING *
+  `);
+
+  if (result.rows.length === 0) {
+    res.json({ ticket: null }); // Nothing available
+    return;
+  }
+
+  const ticket = result.rows[0] as typeof tickets.$inferSelect;
+
+  await logActivity(ticket.id, {
+    actorType: "bot",
+    actorBotId: req.botId,
+    action: "checked_out",
+    toStatus: "in_progress",
+    comment: "Auto-claimed via /next poll",
+  });
+
+  publishEvent(req.params.roomId!, { type: "ticket.checkout", ticket });
+
+  res.json({ ticket });
+});
 
 // GET /api/rooms/:roomId/tickets
 router.get("/", requireAuth, async (req: AuthRequest, res) => {
@@ -303,12 +360,31 @@ router.post("/:ticketId/spawn-worker", requireAuth, async (req: AuthRequest, res
     return;
   }
 
-  // Spawn child bot inheriting parent's provider config
-  const { randomUUID } = await import("crypto");
+  // Determine provider for spawned bot:
+  // - If parent uses padi_lm, inherit it (padiId stays the same)
+  // - If room has a padiId with llmEnvironment, use padi_lm
+  // - Otherwise inherit parent's provider
+  const { randomUUID, createHash } = await import("crypto");
   const rawKey = `tw_bot_${randomUUID()}`;
-  const { createHash } = await import("crypto");
   const apiKeyHash = createHash("sha256").update(rawKey).digest("hex");
   const apiKeyPrefix = rawKey.slice(0, 12);
+
+  let spawnProvider = parentBot.provider ?? "http";
+  let spawnProviderConfig = (parentBot.providerConfig ?? {}) as Record<string, unknown>;
+
+  if (spawnProvider !== "padi_lm") {
+    // Check if room belongs to a padi with an LLM environment
+    const [parentRoom] = await db.select({ padiId: rooms.padiId }).from(rooms)
+      .where(eq(rooms.id, req.params.roomId!)).limit(1);
+    if (parentRoom?.padiId) {
+      const [padi] = await db.select({ llmEnvironment: padis.llmEnvironment })
+        .from(padis).where(eq(padis.id, parentRoom.padiId)).limit(1);
+      if (padi?.llmEnvironment) {
+        spawnProvider = "padi_lm";
+        spawnProviderConfig = { padiId: parentRoom.padiId };
+      }
+    }
+  }
 
   const [childBot] = await db.insert(bots).values({
     name: `worker_${Date.now()}`,
@@ -319,8 +395,8 @@ router.post("/:ticketId/spawn-worker", requireAuth, async (req: AuthRequest, res
     apiKey: rawKey,
     apiKeyHash,
     apiKeyPrefix,
-    provider: parentBot.provider,
-    providerConfig: parentBot.providerConfig,
+    provider: spawnProvider,
+    providerConfig: spawnProviderConfig,
   }).returning();
 
   // Create sub-ticket

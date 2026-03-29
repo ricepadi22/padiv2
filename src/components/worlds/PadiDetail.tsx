@@ -2,11 +2,12 @@ import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Hash, Plus, Users, Bot, Settings, Globe, Lock, LogOut, X, Crown, Shield, User } from "lucide-react";
+import { Hash, Plus, Settings, Globe, Lock, LogOut, X, Crown, Shield, User } from "lucide-react";
 import { padisApi, type PadiMember } from "../../api/padis.ts";
 import { roomsApi } from "../../api/rooms.ts";
 import { JoinRequestList } from "./JoinRequestList.tsx";
 import { PadiHostSetup } from "./PadiHostSetup.tsx";
+import { PadiLlmEnvSetup } from "./PadiLlmEnvSetup.tsx";
 
 interface PadiDetailProps {
   padiId: string;
@@ -14,7 +15,7 @@ interface PadiDetailProps {
   onDeselect: () => void;
 }
 
-type Tab = "rooms" | "members" | "host";
+type Tab = "rooms" | "members" | "llm" | "host";
 
 const roleIcon: Record<string, React.ReactNode> = {
   owner: <Crown className="w-3 h-3 text-amber-600" />,
@@ -62,7 +63,7 @@ export function PadiDetail({ padiId, currentUserId, onDeselect }: PadiDetailProp
   });
 
   const createRoom = useMutation({
-    mutationFn: () => roomsApi.create({ world: "higher", name: newRoomName, description: newRoomDesc || undefined, padiId }),
+    mutationFn: () => roomsApi.create({ world: "middle", name: newRoomName, description: newRoomDesc || undefined, padiId }),
     onSuccess: ({ room }) => {
       void queryClient.invalidateQueries({ queryKey: ["padi", padiId] });
       void queryClient.invalidateQueries({ queryKey: ["rooms"] });
@@ -101,14 +102,23 @@ export function PadiDetail({ padiId, currentUserId, onDeselect }: PadiDetailProp
   const isAdmin = ["owner", "admin"].includes(myRole);
   const pendingCount = (padi as { pendingJoinRequestCount?: number }).pendingJoinRequestCount ?? 0;
 
+  const llmConfigured = !!(padi as { llmEnvironment?: unknown }).llmEnvironment;
+
   const tabs = [
     { id: "rooms" as Tab, label: "Rooms" },
     { id: "members" as Tab, label: `Members (${members.length})` },
-    {
-      id: "host" as Tab,
-      label: "AI Host",
-      badge: hostBot ? hostBot.status === "active" ? "active" : "paused" : undefined,
-    },
+    ...(isAdmin ? [
+      {
+        id: "llm" as Tab,
+        label: "LLM",
+        badge: llmConfigured ? "active" : ("warning" as string | undefined),
+      },
+      {
+        id: "host" as Tab,
+        label: "AI Host",
+        badge: hostBot ? (hostBot.status === "active" ? "active" : "paused") : undefined,
+      },
+    ] : []),
   ];
 
   return (
@@ -174,7 +184,7 @@ export function PadiDetail({ padiId, currentUserId, onDeselect }: PadiDetailProp
                 </span>
               )}
               {t.badge && (
-                <span className={`w-1.5 h-1.5 rounded-full ${t.badge === "active" ? "bg-emerald-500" : "bg-zinc-400"}`} />
+                <span className={`w-1.5 h-1.5 rounded-full ${t.badge === "active" ? "bg-emerald-500" : t.badge === "warning" ? "bg-amber-400" : "bg-zinc-400"}`} />
               )}
             </button>
           ))}
@@ -235,6 +245,19 @@ export function PadiDetail({ padiId, currentUserId, onDeselect }: PadiDetailProp
                 ))}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ── LLM Environment tab ── */}
+        {activeTab === "llm" && (
+          <div className="p-4">
+            <PadiLlmEnvSetup
+              padiId={padiId}
+              padiName={padi.name}
+              currentUserId={currentUserId}
+              myMembershipId={myMembership?.id}
+              isOwner={isOwner}
+            />
           </div>
         )}
 

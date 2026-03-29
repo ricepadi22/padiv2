@@ -3,13 +3,13 @@ import { eq, and } from "drizzle-orm";
 import { z } from "zod";
 import { randomUUID, createHash } from "crypto";
 import { db } from "../db/client.js";
-import { inviteTokens, rooms, roomMembers, messages, bots } from "../db/schema/index.js";
+import { inviteTokens, rooms, roomMembers, messages, bots, padiMembers } from "../db/schema/index.js";
 import { requireAuth, requireHuman, type AuthRequest } from "../middleware/auth.js";
 import { publishEvent } from "../realtime/ws.js";
 
 const router = Router();
 
-// Generate invite token (human user generates for a Middle World room)
+// Generate room-level invite token (Middle World room)
 router.post("/", requireAuth, requireHuman, async (req: AuthRequest, res) => {
   const schema = z.object({ roomId: z.string().uuid() });
   const parsed = schema.safeParse(req.body);
@@ -19,17 +19,14 @@ router.post("/", requireAuth, requireHuman, async (req: AuthRequest, res) => {
   }
 
   const [room] = await db.select().from(rooms).where(eq(rooms.id, parsed.data.roomId)).limit(1);
-  if (!room) {
-    res.status(404).json({ error: "Room not found" });
-    return;
-  }
+  if (!room) { res.status(404).json({ error: "Room not found" }); return; }
   if (room.world !== "middle") {
     res.status(400).json({ error: "Invite tokens are only for Middle World rooms" });
     return;
   }
 
   const token = `padi_invite_${randomUUID().replace(/-/g, "")}`;
-  const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
   const [invite] = await db.insert(inviteTokens).values({
     token,
@@ -46,7 +43,7 @@ router.post("/accept", async (req: AuthRequest, res) => {
   const schema = z.object({
     token: z.string(),
     agentName: z.string().min(1).max(100),
-    provider: z.enum(["http", "openclaw_gateway", "claude_api"]).default("openclaw_gateway"),
+    provider: z.enum(["http", "openclaw_gateway", "claude_api", "padi_lm"]).default("openclaw_gateway"),
     providerConfig: z.record(z.unknown()).default({}),
   });
   const parsed = schema.safeParse(req.body);
@@ -59,10 +56,7 @@ router.post("/accept", async (req: AuthRequest, res) => {
     .where(eq(inviteTokens.token, parsed.data.token))
     .limit(1);
 
-  if (!invite) {
-    res.status(404).json({ error: "Invite token not found" });
-    return;
-  }
+  if (!invite) { res.status(404).json({ error: "Invite token not found" }); return; }
   if (invite.status !== "pending") {
     res.status(400).json({ error: `Invite token already ${invite.status}` });
     return;
@@ -89,21 +83,36 @@ router.post("/accept", async (req: AuthRequest, res) => {
     providerConfig: parsed.data.providerConfig,
   }).returning();
 
-  // Add bot to room
-  await db.insert(roomMembers).values({
-    roomId: invite.roomId,
-    memberType: "bot",
-    botId: bot!.id,
-    role: "participant",
-  });
+  // Room-level invite: add bot to room
+  if (invite.roomId) {
+    await db.insert(roomMembers).values({
+      roomId: invite.roomId,
+      memberType: "bot",
+      botId: bot!.id,
+      role: "participant",
+    });
 
-  // Post system message
-  const [sysMsg] = await db.insert(messages).values({
-    roomId: invite.roomId,
-    authorType: "system",
-    body: `**${parsed.data.agentName}** joined via invite token.`,
-    messageType: "status_update",
-  }).returning();
+    const [sysMsg] = await db.insert(messages).values({
+      roomId: invite.roomId,
+      authorType: "system",
+      body: `**${parsed.data.agentName}** joined via invite token.`,
+      messageType: "status_update",
+    }).returning();
+
+    publishEvent(invite.roomId, { type: "message.new", roomId: invite.roomId, message: sysMsg });
+  }
+
+  // Padi-level invite: link as personal bot on the creator's padi membership
+  if (invite.padiId) {
+    await db.update(padiMembers)
+      .set({ personalBotId: bot!.id })
+      .where(
+        and(
+          eq(padiMembers.padiId, invite.padiId),
+          eq(padiMembers.userId, invite.createdByUserId),
+        )
+      );
+  }
 
   // Mark token accepted
   await db.update(inviteTokens).set({
@@ -111,9 +120,11 @@ router.post("/accept", async (req: AuthRequest, res) => {
     acceptedByBotId: bot!.id,
   }).where(eq(inviteTokens.id, invite.id));
 
-  publishEvent(invite.roomId, { type: "message.new", roomId: invite.roomId, message: sysMsg });
-
-  res.status(201).json({ bot: { ...bot!, apiKey: rawKey }, roomId: invite.roomId });
+  res.status(201).json({
+    bot: { ...bot!, apiKey: rawKey },
+    roomId: invite.roomId ?? null,
+    padiId: invite.padiId ?? null,
+  });
 });
 
 // Check token status
@@ -122,12 +133,8 @@ router.get("/:token/status", requireAuth, async (req: AuthRequest, res) => {
     .where(eq(inviteTokens.token, req.params.token!))
     .limit(1);
 
-  if (!invite) {
-    res.status(404).json({ error: "Token not found" });
-    return;
-  }
+  if (!invite) { res.status(404).json({ error: "Token not found" }); return; }
 
-  // Auto-expire if past expiry
   if (invite.status === "pending" && new Date() > invite.expiresAt) {
     await db.update(inviteTokens).set({ status: "expired" }).where(eq(inviteTokens.id, invite.id));
     res.json({ status: "expired" });
@@ -137,9 +144,7 @@ router.get("/:token/status", requireAuth, async (req: AuthRequest, res) => {
   let botInfo = null;
   if (invite.acceptedByBotId) {
     const [bot] = await db.select({
-      id: bots.id,
-      displayName: bots.displayName,
-      provider: bots.provider,
+      id: bots.id, displayName: bots.displayName, provider: bots.provider,
     }).from(bots).where(eq(bots.id, invite.acceptedByBotId)).limit(1);
     botInfo = bot ?? null;
   }

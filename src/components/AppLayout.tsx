@@ -3,7 +3,7 @@ import { Shield, MessageSquare, Hammer, Bot, LogOut } from "lucide-react";
 import { useAuth } from "../context/AuthContext.tsx";
 
 const worlds = [
-  { to: "/worlds/higher", label: "Higher", icon: Shield, dot: "bg-amber-400" },
+  { to: "/worlds/higher", label: "Padi Hub", icon: Shield, dot: "bg-amber-400" },
   { to: "/worlds/middle", label: "Middle", icon: MessageSquare, dot: "bg-green-400" },
   { to: "/worlds/worker", label: "Worker", icon: Hammer, dot: "bg-blue-400" },
 ];

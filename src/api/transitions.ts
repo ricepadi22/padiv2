@@ -3,18 +3,6 @@ import type { Room } from "./rooms.ts";
 import type { Message } from "./messages.ts";
 
 export const transitionsApi = {
-  stepAway: (fromRoomId: string, reason?: string) =>
-    apiFetch<{ higherRoom: Room }>("/api/transitions/step-away", {
-      method: "POST",
-      body: JSON.stringify({ fromRoomId, reason }),
-    }),
-
-  return: (fromRoomId: string) =>
-    apiFetch<{ middleRoomId: string }>("/api/transitions/return", {
-      method: "POST",
-      body: JSON.stringify({ fromRoomId }),
-    }),
-
   sendToWork: (fromRoomId: string, taskDescription: string, name?: string) =>
     apiFetch<{ workerRoom: Room }>("/api/transitions/send-to-work", {
       method: "POST",

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Lock, Zap, Hash, Plus, Trash2, Send as SendIcon, ChevronLeft, Menu } from "lucide-react";
+import { Lock, Zap, Hash, Plus, Trash2, ChevronLeft, Menu } from "lucide-react";
 import { roomsApi, type WorldType, type Room } from "../api/rooms.ts";
 import { padisApi } from "../api/padis.ts";
 import { PadiList } from "../components/worlds/PadiList.tsx";
@@ -123,9 +123,9 @@ function HigherWorldEmpty({ onExplore }: { onExplore: () => void }) {
       <div className="w-14 h-14 rounded-2xl bg-amber-50 flex items-center justify-center mb-4">
         <span className="text-2xl">🌾</span>
       </div>
-      <h3 className="text-sm font-semibold text-zinc-800 mb-1">Welcome to Higher World</h3>
+      <h3 className="text-sm font-semibold text-zinc-800 mb-1">Welcome to Padi Hub</h3>
       <p className="text-xs text-zinc-400 max-w-xs leading-relaxed">
-        Higher World is for human collaboration. Create a padi to start your own community, or explore public padis to join.
+        Create a padi to start your own community, set its LLM environment, and invite your personal agent. Or explore public padis to join.
       </p>
       <button
         onClick={onExplore}
@@ -279,7 +279,7 @@ function WorkerWorldView({ padiId }: { padiId: string }) {
   const { data: roomsData, isLoading } = useQuery({
     queryKey: ["rooms", "worker", padiId],
     queryFn: () => roomsApi.list("worker", padiId),
-    enabled: !!padiData?.padi.hostBotId,
+    enabled: !!(padiData?.padi as { llmEnvironment?: unknown } | undefined)?.llmEnvironment,
   });
 
   const createRoom = useMutation({
@@ -298,8 +298,9 @@ function WorkerWorldView({ padiId }: { padiId: string }) {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["rooms", "worker", padiId] }),
   });
 
-  // Locked state — no AI host configured
-  if (!padiData?.padi.hostBotId) {
+  // Locked state — no LLM environment configured
+  const llmConfigured = !!(padiData?.padi as { llmEnvironment?: unknown } | undefined)?.llmEnvironment;
+  if (!llmConfigured) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-center px-8">
         <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mb-4">
@@ -307,12 +308,12 @@ function WorkerWorldView({ padiId }: { padiId: string }) {
         </div>
         <h3 className="text-sm font-semibold text-zinc-800 mb-1">Worker World is locked</h3>
         <p className="text-xs text-zinc-400 max-w-xs leading-relaxed mb-4">
-          Set up an AI host for this padi to unlock Worker World. The AI host will spawn agents to complete tasks.
+          Configure an LLM environment for this padi to unlock Worker World. All spawned bots will inherit it.
         </p>
         <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl">
           <Zap className="w-3.5 h-3.5 text-blue-500 shrink-0" />
           <p className="text-xs text-blue-700">
-            Go to <strong>Higher World → AI Host tab</strong> to set up your padi's AI.
+            Go to <strong>Padi Hub → LLM tab</strong> to set your API key or connect Claude.ai.
           </p>
         </div>
       </div>

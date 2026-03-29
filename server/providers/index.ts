@@ -2,11 +2,12 @@ import { httpProvider } from "./http.ts";
 import { openclawProvider } from "./openclaw_gateway.ts";
 import { claudeApiProvider } from "./claude_api.ts";
 import { claudeLocalProvider } from "./claude_local.ts";
+import { padiLlmProvider } from "./padi_lm.ts";
 import type { BotProvider } from "./types.ts";
 
 export type { BotProvider, DispatchContext, DispatchResult, ProviderConfigField } from "./types.ts";
 
-export const PROVIDER_NAMES = ["http", "openclaw_gateway", "claude_api", "claude_local"] as const;
+export const PROVIDER_NAMES = ["http", "openclaw_gateway", "claude_api", "claude_local", "padi_lm"] as const;
 export type ProviderName = typeof PROVIDER_NAMES[number];
 
 const registry = new Map<string, BotProvider>([
@@ -14,6 +15,7 @@ const registry = new Map<string, BotProvider>([
   [openclawProvider.name, openclawProvider],
   [claudeApiProvider.name, claudeApiProvider],
   [claudeLocalProvider.name, claudeLocalProvider],
+  [padiLlmProvider.name, padiLlmProvider],
 ]);
 
 export function getProvider(name: string): BotProvider | null {

@@ -1,16 +1,28 @@
 import { apiFetch } from "./client.ts";
 import type { Room } from "./rooms.ts";
 
+export interface LlmEnvironment {
+  type: "api_key" | "oauth";
+  config: {
+    apiKey?: string;      // masked: "...xxxx" from API
+    accessToken?: string; // "connected" if set
+    model?: string;
+    systemPrompt?: string;
+  };
+}
+
 export interface Padi {
   id: string;
   name: string;
   description?: string;
+  goals?: string;
   avatarUrl?: string;
   createdByUserId?: string;
   status: string;
   isPublic: boolean;
   requireApproval: boolean;
   hostBotId?: string;
+  llmEnvironment?: LlmEnvironment | null;
   createdAt: string;
   updatedAt: string;
   // Enriched fields from list/get endpoints
@@ -71,11 +83,37 @@ export const padisApi = {
   get: (id: string) =>
     apiFetch<{ padi: Padi; members: PadiMember[]; hostBot: PadiHostBot | null }>(`/api/padis/${id}`),
 
-  create: (data: { name: string; description?: string; isPublic?: boolean; requireApproval?: boolean }) =>
+  create: (data: {
+    name: string;
+    description?: string;
+    goals?: string;
+    isPublic?: boolean;
+    requireApproval?: boolean;
+    llmEnvironment?: { type: "api_key"; config: { apiKey: string; model?: string } };
+  }) =>
     apiFetch<{ padi: Padi }>("/api/padis", { method: "POST", body: JSON.stringify(data) }),
 
-  update: (id: string, data: { name?: string; description?: string; status?: string; isPublic?: boolean; requireApproval?: boolean }) =>
+  update: (id: string, data: {
+    name?: string;
+    description?: string;
+    goals?: string;
+    status?: string;
+    isPublic?: boolean;
+    requireApproval?: boolean;
+  }) =>
     apiFetch<{ padi: Padi }>(`/api/padis/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+
+  getLlmEnv: (id: string) =>
+    apiFetch<{ llmEnvironment: LlmEnvironment | null }>(`/api/padis/${id}/llm-env`),
+
+  setLlmEnv: (id: string, data: { type: "api_key" | "oauth"; config: Record<string, unknown> }) =>
+    apiFetch<{ ok: boolean }>(`/api/padis/${id}/llm-env`, { method: "PATCH", body: JSON.stringify(data) }),
+
+  clearLlmEnv: (id: string) =>
+    apiFetch<{ ok: boolean }>(`/api/padis/${id}/llm-env`, { method: "DELETE" }),
+
+  generatePersonalBotInvite: (padiId: string) =>
+    apiFetch<{ token: string; expiresAt: string }>(`/api/padis/${padiId}/personal-bot-invite`, { method: "POST" }),
 
   join: (padiId: string, message?: string) =>
     apiFetch<{ joined?: boolean; requested?: boolean; member?: PadiMember; joinRequest?: JoinRequest }>(
@@ -101,12 +139,12 @@ export const padisApi = {
   removeMember: (padiId: string, memberId: string) =>
     apiFetch(`/api/padis/${padiId}/members/${memberId}`, { method: "DELETE" }),
 
-  createHost: (padiId: string, data: { displayName: string; provider?: string; providerConfig?: Record<string, unknown> }) =>
+  createHost: (padiId: string, data: { displayName: string; systemPrompt?: string }) =>
     apiFetch<{ bot: PadiHostBot & { apiKey: string } }>(`/api/padis/${padiId}/host`, {
       method: "POST", body: JSON.stringify(data),
     }),
 
-  updateHost: (padiId: string, data: { displayName?: string; providerConfig?: Record<string, unknown>; status?: string }) =>
+  updateHost: (padiId: string, data: { displayName?: string; systemPrompt?: string; status?: string }) =>
     apiFetch<{ bot: PadiHostBot }>(`/api/padis/${padiId}/host`, {
       method: "PATCH", body: JSON.stringify(data),
     }),

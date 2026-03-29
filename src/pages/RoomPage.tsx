@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bot, LogOut, Send as SendIcon, Users, Ticket, MessageSquare, Trash2 } from "lucide-react";
+import { ArrowLeft, Bot, Send as SendIcon, Ticket, MessageSquare, Trash2 } from "lucide-react";
 import { roomsApi } from "../api/rooms.ts";
 import { messagesApi } from "../api/messages.ts";
 import { transitionsApi } from "../api/transitions.ts";
@@ -68,11 +68,6 @@ export function RoomPage() {
   const postMessage = useMutation({
     mutationFn: (body: string) => messagesApi.post(roomId!, body),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ["messages", roomId] }),
-  });
-
-  const stepAway = useMutation({
-    mutationFn: () => transitionsApi.stepAway(roomId!),
-    onSuccess: ({ higherRoom }) => void navigate(`/rooms/${higherRoom.id}`),
   });
 
   const archiveRoom = useMutation({
@@ -147,18 +142,6 @@ export function RoomPage() {
                 <span className="hidden sm:inline">Tickets</span>
               </button>
             </div>
-          )}
-          {/* Middle World actions — text labels hidden on mobile */}
-          {room?.world === "middle" && (
-            <button
-              onClick={() => stepAway.mutate()}
-              disabled={stepAway.isPending}
-              className="flex items-center gap-1 text-xs font-medium px-2 py-1.5 text-amber-700 bg-amber-50 border border-amber-200 rounded-lg hover:bg-amber-100 transition-colors disabled:opacity-50"
-              title="Step Away"
-            >
-              <LogOut className="w-3 h-3" />
-              <span className="hidden sm:inline">Step Away</span>
-            </button>
           )}
           {room?.world === "middle" && (
             <button
