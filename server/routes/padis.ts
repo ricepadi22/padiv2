@@ -2,6 +2,9 @@ import { Router } from "express";
 import { eq, and, isNull, ilike, count } from "drizzle-orm";
 import { z } from "zod";
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
+import os from "os";
 import { db } from "../db/client.js";
 import { padis, padiMembers, rooms, users, bots, roomMembers, joinRequests, inviteTokens } from "../db/schema/index.js";
 import { requireAuth, requireHuman, type AuthRequest } from "../middleware/auth.js";
@@ -375,6 +378,45 @@ router.get("/:id/llm-env", requireAuth, requireHuman, async (req: AuthRequest, r
     },
   };
   res.json({ llmEnvironment: masked });
+});
+
+// ─── USE CLAUDE.AI SUBSCRIPTION ──────────────────────────────────────────────
+// Sets llmEnvironment to type:"subscription" — credentials read from ~/.claude/.credentials.json at dispatch time
+router.post("/:id/use-subscription", requireAuth, requireHuman, async (req: AuthRequest, res) => {
+  const schema = z.object({ model: z.string().optional() });
+  const parsed = schema.safeParse(req.body);
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return; }
+
+  const [membership] = await db.select().from(padiMembers).where(
+    and(eq(padiMembers.padiId, req.params.id!), eq(padiMembers.userId, req.user!.id), isNull(padiMembers.leftAt))
+  ).limit(1);
+  if (!membership || !["owner", "admin"].includes(membership.role)) {
+    res.status(403).json({ error: "Only padi owners/admins can update LLM environment" }); return;
+  }
+
+  // Verify credentials file is present and has a token before enabling
+  const credPath = path.join(os.homedir(), ".claude", ".credentials.json");
+  try {
+    const raw = fs.readFileSync(credPath, "utf8");
+    const creds = JSON.parse(raw) as { claudeAiOauth?: { accessToken?: string; subscriptionType?: string } };
+    if (!creds.claudeAiOauth?.accessToken) {
+      res.status(400).json({ error: "No Claude.ai token found in server credentials. Ensure Claude Code is authenticated on this server." });
+      return;
+    }
+  } catch {
+    res.status(400).json({ error: "Claude Code credentials not found on this server. Authenticate with Claude Code first." });
+    return;
+  }
+
+  await db.update(padis).set({
+    llmEnvironment: {
+      type: "subscription",
+      config: { model: parsed.data.model ?? "claude-sonnet-4-6" },
+    },
+    updatedAt: new Date(),
+  }).where(eq(padis.id, req.params.id!));
+
+  res.json({ ok: true });
 });
 
 // ─── SET LLM ENVIRONMENT ─────────────────────────────────────────────────────

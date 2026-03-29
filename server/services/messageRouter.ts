@@ -53,8 +53,30 @@ export async function routeMessageToBots(message: Message, room: Room): Promise<
     authorDisplayName = author?.displayName ?? "Unknown";
   }
 
-  for (const bot of activeBots) {
-    // Never route a bot's message back to itself
+  // ── @mention filtering (Middle World only) ──────────────────────────────────
+  // In Middle World, agents observe silently unless @mentioned.
+  // Supported: @DisplayName → dispatch to that bot; @all → broadcast to all bots.
+  // Worker World keeps broadcast behavior (autonomous task processing).
+  let botsToDispatch = activeBots;
+  if (room.world === "middle") {
+    const bodyLower = message.body.toLowerCase();
+    const mentionAll = /@all\b/i.test(message.body);
+    if (mentionAll) {
+      botsToDispatch = activeBots.filter((b) => b.id !== message.authorBotId);
+    } else {
+      botsToDispatch = activeBots.filter((b) => {
+        if (b.id === message.authorBotId) return false;
+        return bodyLower.includes(`@${b.displayName.toLowerCase()}`);
+      });
+    }
+    if (botsToDispatch.length === 0) return;
+  }
+
+  // Build set of mentioned bot IDs to pass in context
+  const mentionedBotIds = new Set(botsToDispatch.map((b) => b.id));
+
+  for (const bot of botsToDispatch) {
+    // Never route a bot's message back to itself (already filtered above, guard for Worker World)
     if (bot.id === message.authorBotId) continue;
 
     const provider = getProvider(bot.provider);
@@ -101,6 +123,7 @@ export async function routeMessageToBots(message: Message, room: Room): Promise<
         authorType: message.authorType,
         authorDisplayName,
         createdAt: message.createdAt.toISOString(),
+        mentionedBotIds: [...mentionedBotIds],
       },
     };
 

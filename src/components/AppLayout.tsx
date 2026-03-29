@@ -1,5 +1,5 @@
 import { NavLink, useNavigate, Outlet, useLocation } from "react-router-dom";
-import { Shield, MessageSquare, Hammer, Bot, LogOut } from "lucide-react";
+import { Shield, MessageSquare, Hammer, LogOut } from "lucide-react";
 import { useAuth } from "../context/AuthContext.tsx";
 
 const worlds = [
@@ -63,21 +63,6 @@ export function AppLayout() {
             </NavLink>
           ))}
 
-          <div className="h-px bg-zinc-800 mx-2 my-2" />
-
-          <NavLink
-            to="/agents"
-            className={({ isActive }) =>
-              `flex items-center gap-2.5 px-2.5 lg:px-3 py-2 rounded-md text-sm transition-colors ${
-                isActive
-                  ? "bg-zinc-800 text-white"
-                  : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-900"
-              }`
-            }
-          >
-            <Bot className="w-4 h-4 shrink-0" />
-            <span className="hidden lg:inline">Agents</span>
-          </NavLink>
         </nav>
 
         {/* User footer */}
@@ -127,21 +112,6 @@ export function AppLayout() {
             )}
           </NavLink>
         ))}
-        <NavLink
-          to="/agents"
-          className={({ isActive }) =>
-            `flex flex-col items-center gap-0.5 px-4 py-2.5 flex-1 transition-colors ${
-              isActive ? "text-white" : "text-zinc-500"
-            }`
-          }
-        >
-          {({ isActive }) => (
-            <>
-              <Bot className="w-5 h-5" />
-              <span className="text-[10px] font-medium">Agents</span>
-            </>
-          )}
-        </NavLink>
         {/* User avatar — just for display */}
         <button
           onClick={() => void handleLogout()}

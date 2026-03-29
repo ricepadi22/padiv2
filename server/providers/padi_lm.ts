@@ -1,3 +1,6 @@
+import fs from "fs";
+import path from "path";
+import os from "os";
 import { db } from "../db/client.js";
 import { padis } from "../db/schema/index.js";
 import { eq } from "drizzle-orm";
@@ -9,7 +12,7 @@ interface PadiLlmConfig {
 }
 
 interface LlmEnvironment {
-  type: "api_key" | "oauth";
+  type: "api_key" | "oauth" | "subscription";
   config: {
     apiKey?: string;
     accessToken?: string;
@@ -19,7 +22,69 @@ interface LlmEnvironment {
   };
 }
 
-const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
+interface ClaudeCredentials {
+  claudeAiOauth?: {
+    accessToken?: string;
+    refreshToken?: string;
+    expiresAt?: string;
+    scopes?: string[];
+    subscriptionType?: string;
+  };
+}
+
+function readClaudeSubscriptionToken(): { accessToken: string } | { error: string } {
+  const credPath = path.join(os.homedir(), ".claude", ".credentials.json");
+  try {
+    const raw = fs.readFileSync(credPath, "utf8");
+    const creds = JSON.parse(raw) as ClaudeCredentials;
+    const oauth = creds.claudeAiOauth;
+    if (!oauth?.accessToken) {
+      return { error: "No Claude.ai OAuth token found in credentials file. Ensure Claude Code is authenticated." };
+    }
+    return { accessToken: oauth.accessToken };
+  } catch {
+    return { error: "Could not read Claude Code credentials. Ensure Claude Code is installed and authenticated on this server." };
+  }
+}
+
+const DEFAULT_MODEL = "claude-sonnet-4-6";
+
+async function callClaudeBearer(
+  accessToken: string,
+  model: string,
+  systemPrompt: string,
+  userContent: string,
+): Promise<DispatchResult> {
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${accessToken}`,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model,
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userContent }],
+      }),
+      signal: AbortSignal.timeout(30_000),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: { message: res.statusText } }));
+      return { ok: false, error: (err as { error?: { message?: string } })?.error?.message ?? `API returned ${res.status}` };
+    }
+
+    const data = await res.json() as { content?: Array<{ text?: string }> };
+    const replyBody = data.content?.[0]?.text ?? "";
+    if (!replyBody) return { ok: false, error: "Empty response from Claude (subscription)" };
+    return { ok: true, replyBody };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Subscription API call failed" };
+  }
+}
 
 async function callClaude(
   apiKey: string,
@@ -105,36 +170,14 @@ export const padiLlmProvider: BotProvider = {
 
     if (llmEnv.type === "oauth") {
       if (!llmEnv.config.accessToken) return { ok: false, error: "LLM environment OAuth tokens not set" };
-      // OAuth uses Bearer token instead of x-api-key
-      try {
-        const res = await fetch("https://api.anthropic.com/v1/messages", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${llmEnv.config.accessToken}`,
-            "anthropic-version": "2023-06-01",
-          },
-          body: JSON.stringify({
-            model,
-            max_tokens: 1024,
-            system: systemPrompt,
-            messages: [{ role: "user", content: userContent }],
-          }),
-          signal: AbortSignal.timeout(30_000),
-        });
+      return callClaudeBearer(llmEnv.config.accessToken, model, systemPrompt, userContent);
+    }
 
-        if (!res.ok) {
-          const err = await res.json().catch(() => ({ error: { message: res.statusText } }));
-          return { ok: false, error: (err as { error?: { message?: string } })?.error?.message ?? `API returned ${res.status}` };
-        }
-
-        const data = await res.json() as { content?: Array<{ text?: string }> };
-        const replyBody = data.content?.[0]?.text ?? "";
-        if (!replyBody) return { ok: false, error: "Empty response from Claude (OAuth)" };
-        return { ok: true, replyBody };
-      } catch (err) {
-        return { ok: false, error: err instanceof Error ? err.message : "OAuth API call failed" };
-      }
+    if (llmEnv.type === "subscription") {
+      // Read Claude Code credentials fresh from disk on every dispatch — Claude Code keeps them refreshed
+      const tokenResult = readClaudeSubscriptionToken();
+      if ("error" in tokenResult) return { ok: false, error: tokenResult.error };
+      return callClaudeBearer(tokenResult.accessToken, model, systemPrompt, userContent);
     }
 
     return { ok: false, error: `Unknown LLM environment type: ${(llmEnv as { type?: string }).type}` };

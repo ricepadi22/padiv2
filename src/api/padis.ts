@@ -2,7 +2,7 @@ import { apiFetch } from "./client.ts";
 import type { Room } from "./rooms.ts";
 
 export interface LlmEnvironment {
-  type: "api_key" | "oauth";
+  type: "api_key" | "oauth" | "subscription";
   config: {
     apiKey?: string;      // masked: "...xxxx" from API
     accessToken?: string; // "connected" if set
@@ -111,6 +111,12 @@ export const padisApi = {
 
   clearLlmEnv: (id: string) =>
     apiFetch<{ ok: boolean }>(`/api/padis/${id}/llm-env`, { method: "DELETE" }),
+
+  useSubscription: (id: string, model?: string) =>
+    apiFetch<{ ok: boolean }>(`/api/padis/${id}/use-subscription`, {
+      method: "POST",
+      body: JSON.stringify({ model }),
+    }),
 
   generatePersonalBotInvite: (padiId: string) =>
     apiFetch<{ token: string; expiresAt: string }>(`/api/padis/${padiId}/personal-bot-invite`, { method: "POST" }),

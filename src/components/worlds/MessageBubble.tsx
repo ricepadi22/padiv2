@@ -82,6 +82,7 @@ export function MessageBubble({ message, authorName, avatarUrl, isOwnMessage, is
 function simpleMarkdown(text: string): string {
   return text
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/@([\w][\w .-]*?)(?=[\s,!?.:;]|$)/g, "<span class='inline-flex items-center bg-green-100 text-green-700 rounded px-1 font-medium text-xs'>@$1</span>")
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/\*(.+?)\*/g, "<em>$1</em>")
     .replace(/`(.+?)`/g, "<code class='bg-zinc-100 px-1 rounded text-xs font-mono text-zinc-700'>$1</code>")

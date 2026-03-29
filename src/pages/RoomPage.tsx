@@ -5,6 +5,7 @@ import { ArrowLeft, Bot, Send as SendIcon, Ticket, MessageSquare, Trash2 } from 
 import { roomsApi } from "../api/rooms.ts";
 import { messagesApi } from "../api/messages.ts";
 import { transitionsApi } from "../api/transitions.ts";
+import { padisApi } from "../api/padis.ts";
 import { useAuth } from "../context/AuthContext.tsx";
 import { useLiveUpdates } from "../context/LiveUpdatesContext.tsx";
 import { MessageBubble } from "../components/worlds/MessageBubble.tsx";
@@ -44,6 +45,12 @@ export function RoomPage() {
     queryKey: ["messages", roomId],
     queryFn: () => messagesApi.list(roomId!),
     enabled: !!roomId,
+  });
+
+  const { data: padiData } = useQuery({
+    queryKey: ["padi", roomData?.room.padiId],
+    queryFn: () => padisApi.get(roomData!.room.padiId!),
+    enabled: !!roomData?.room.padiId,
   });
 
   useEffect(() => {
@@ -86,6 +93,10 @@ export function RoomPage() {
   const myMember = members.find((m) => m.userId === user?.id);
   const isObserver = myMember?.role === "observer";
   const canInviteAgents = room?.world !== "higher";
+  const botMembers = activeMembers
+    .filter((m) => m.memberType === "bot")
+    .map((m) => ({ id: m.botId ?? "", displayName: m.displayName ?? "Agent" }))
+    .filter((m) => m.id);
 
   const meetingRequestMessages = messages.filter((m) => m.messageType === "meeting_request");
   const accentClass = room ? (worldAccent[room.world] ?? "") : "";
@@ -244,13 +255,20 @@ export function RoomPage() {
               onSend={(body) => postMessage.mutate(body)}
               disabled={postMessage.isPending}
               observerMode={isObserver}
+              botMembers={botMembers}
             />
           </div>
         </>
       )}
 
       {showInviteAgent && roomId && (
-        <InviteAgentModal roomId={roomId} world={room?.world} onClose={() => setShowInviteAgent(false)} />
+        <InviteAgentModal
+          roomId={roomId}
+          world={room?.world}
+          roomName={room?.name}
+          padiName={padiData?.padi.name}
+          onClose={() => setShowInviteAgent(false)}
+        />
       )}
 
       {showDispatch && roomId && (

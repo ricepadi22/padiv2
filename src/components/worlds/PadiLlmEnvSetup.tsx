@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Zap, Trash2, Bot } from "lucide-react";
+import { Check, Copy, Zap, Trash2, Bot, Sparkles } from "lucide-react";
 import { padisApi } from "../../api/padis.ts";
 import { invitesApi } from "../../api/invites.ts";
 
@@ -25,6 +25,7 @@ export function PadiLlmEnvSetup({ padiId, padiName, isOwner }: Props) {
   const [model, setModel] = useState("claude-sonnet-4-6");
   const [llmError, setLlmError] = useState("");
   const [llmSaved, setLlmSaved] = useState(false);
+  const [showApiKeyForm, setShowApiKeyForm] = useState(false);
 
   const setLlmEnv = useMutation({
     mutationFn: () => padisApi.setLlmEnv(padiId, {
@@ -47,6 +48,17 @@ export function PadiLlmEnvSetup({ padiId, padiName, isOwner }: Props) {
       void queryClient.invalidateQueries({ queryKey: ["padi-llm-env", padiId] });
       void queryClient.invalidateQueries({ queryKey: ["padi", padiId] });
     },
+  });
+
+  const useSubscription = useMutation({
+    mutationFn: () => padisApi.useSubscription(padiId, model),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["padi-llm-env", padiId] });
+      void queryClient.invalidateQueries({ queryKey: ["padi", padiId] });
+      setLlmSaved(true);
+      setTimeout(() => setLlmSaved(false), 2000);
+    },
+    onError: (e: Error) => setLlmError(e.message),
   });
 
   // ── PERSONAL BOT INVITE ───────────────────────────────────────────────────────
@@ -136,7 +148,11 @@ export function PadiLlmEnvSetup({ padiId, padiName, isOwner }: Props) {
               <div className="flex items-center gap-1.5 mb-1">
                 <Check className="w-3.5 h-3.5 text-emerald-600" />
                 <span className="text-xs font-semibold text-emerald-700">
-                  {llmEnv.type === "oauth" ? "Claude.ai OAuth connected" : "API key configured"}
+                  {llmEnv.type === "subscription"
+                    ? "Claude.ai subscription"
+                    : llmEnv.type === "oauth"
+                    ? "Claude.ai OAuth connected"
+                    : "API key configured"}
                 </span>
               </div>
               {llmEnv.type === "api_key" && llmEnv.config.apiKey && (
@@ -159,30 +175,60 @@ export function PadiLlmEnvSetup({ padiId, padiName, isOwner }: Props) {
         ) : (
           isOwner ? (
             <div className="space-y-2">
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="sk-ant-..."
-                className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-400"
-              />
-              <select
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-amber-400 bg-white"
-              >
-                <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (fast)</option>
-                <option value="claude-sonnet-4-6">claude-sonnet-4-6 (balanced)</option>
-                <option value="claude-opus-4-6">claude-opus-4-6 (powerful)</option>
-              </select>
+              {/* Primary: use server's Claude.ai subscription */}
+              {!showApiKeyForm && (
+                <>
+                  <button
+                    onClick={() => { setLlmError(""); useSubscription.mutate(); }}
+                    disabled={useSubscription.isPending}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 bg-zinc-900 text-white rounded-lg text-xs font-medium hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    {llmSaved ? "Connected!" : useSubscription.isPending ? "Connecting…" : "Use Claude.ai Subscription"}
+                  </button>
+                  <button
+                    onClick={() => setShowApiKeyForm(true)}
+                    className="w-full py-1.5 text-xs text-zinc-400 hover:text-zinc-600 transition-colors"
+                  >
+                    Use API key instead →
+                  </button>
+                </>
+              )}
+              {/* Fallback: API key */}
+              {showApiKeyForm && (
+                <>
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={(e) => setApiKey(e.target.value)}
+                    placeholder="sk-ant-..."
+                    className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-400"
+                  />
+                  <select
+                    value={model}
+                    onChange={(e) => setModel(e.target.value)}
+                    className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-amber-400 bg-white"
+                  >
+                    <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (fast)</option>
+                    <option value="claude-sonnet-4-6">claude-sonnet-4-6 (balanced)</option>
+                    <option value="claude-opus-4-6">claude-opus-4-6 (powerful)</option>
+                  </select>
+                  <button
+                    onClick={() => { setLlmError(""); setLlmEnv.mutate(); }}
+                    disabled={!apiKey.trim() || setLlmEnv.isPending}
+                    className="w-full py-2 bg-amber-500 text-white rounded-lg text-xs font-medium hover:bg-amber-600 disabled:opacity-50 transition-colors"
+                  >
+                    {llmSaved ? "Saved!" : setLlmEnv.isPending ? "Saving..." : "Save API Key"}
+                  </button>
+                  <button
+                    onClick={() => setShowApiKeyForm(false)}
+                    className="w-full py-1.5 text-xs text-zinc-400 hover:text-zinc-600 transition-colors"
+                  >
+                    ← Back
+                  </button>
+                </>
+              )}
               {llmError && <p className="text-xs text-red-500">{llmError}</p>}
-              <button
-                onClick={() => { setLlmError(""); setLlmEnv.mutate(); }}
-                disabled={!apiKey.trim() || setLlmEnv.isPending}
-                className="w-full py-2 bg-amber-500 text-white rounded-lg text-xs font-medium hover:bg-amber-600 disabled:opacity-50 transition-colors"
-              >
-                {llmSaved ? "Saved!" : setLlmEnv.isPending ? "Saving..." : "Save API Key"}
-              </button>
             </div>
           ) : (
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-400">

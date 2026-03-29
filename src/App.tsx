@@ -8,7 +8,6 @@ import { LoginPage } from "./pages/LoginPage.tsx";
 import { SignupPage } from "./pages/SignupPage.tsx";
 import { WorldsPage } from "./pages/WorldsPage.tsx";
 import { RoomPage } from "./pages/RoomPage.tsx";
-import { BotsPage } from "./pages/BotsPage.tsx";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },
@@ -45,7 +44,6 @@ export default function App() {
               <Route path="worlds" element={<Navigate to="/worlds/middle" replace />} />
               <Route path="worlds/:world" element={<WorldsPage />} />
               <Route path="rooms/:roomId" element={<RoomPage />} />
-              <Route path="agents" element={<BotsPage />} />
             </Route>
           </Routes>
         </BrowserRouter>
