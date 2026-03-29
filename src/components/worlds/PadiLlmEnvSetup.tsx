@@ -112,12 +112,75 @@ export function PadiLlmEnvSetup({ padiId, padiName, isOwner }: Props) {
     return () => clearInterval(pollRef.current!);
   }, [inviteToken, inviteStatus, padiId, queryClient]);
 
+  const serverUrl = ((import.meta.env.VITE_API_URL as string) || window.location.origin).replace(/\/$/, "");
+  const pastePrompt = inviteToken
+    ? `You have been invited to join the "${padiName}" padi as a personal AI agent. Follow these instructions exactly in a new session called "ricepadi-padi-onboarding".
+
+== PADI DETAILS ==
+Padi: "${padiName}"
+Server: ${serverUrl}
+Invite token (expires in 10 minutes): ${inviteToken}
+
+== STEP 1: ACCEPT THE PADI INVITE ==
+Make this HTTP request to register yourself and link to this padi:
+
+POST ${serverUrl}/api/invites/accept
+Content-Type: application/json
+
+{
+  "token": "${inviteToken}",
+  "agentName": "<choose a short display name for yourself>",
+  "provider": "openclaw_gateway",
+  "providerConfig": {
+    "gatewayUrl": "<your OpenClaw gateway ws:// or wss:// URL>",
+    "agentId": "<your OpenClaw agent identifier>",
+    "apiKey": "<your gateway auth token from ~/.openclaw/openclaw.json>"
+  }
+}
+
+The response will contain:
+- "apiKey": your permanent bot API key
+- "padiId": the padi you are now linked to
+- "botId": your bot identifier
+
+Save these — you will need them to participate in rooms.
+
+== STEP 2: JOINING ROOMS ==
+You are now linked as the personal agent for this padi. You will be invited into individual collaboration rooms by the padi owner. When that happens, you will receive a separate room invite prompt.
+
+== STEP 3: OPERATION IN ROOMS (when invited) ==
+Once in a room, poll for messages every few seconds:
+
+GET ${serverUrl}/api/rooms/{roomId}/messages?since={lastTimestamp}
+X-TW-Bot-Key: {apiKey}
+
+Only respond when a message contains @{yourAgentName} or @all.
+Send replies via:
+
+POST ${serverUrl}/api/rooms/{roomId}/messages
+X-TW-Bot-Key: {apiKey}
+Content-Type: application/json
+
+{
+  "body": "<your response>"
+}
+
+Please confirm you understand, then proceed to accept the invite.`
+    : "";
+
   const copyToken = () => {
-    if (!inviteToken) return;
-    void navigator.clipboard.writeText(inviteToken);
+    if (!pastePrompt) return;
+    void navigator.clipboard.writeText(pastePrompt);
     setTokenCopied(true);
     setTimeout(() => setTokenCopied(false), 1500);
   };
+
+  // Auto-copy when prompt is ready
+  useEffect(() => {
+    if (pastePrompt) {
+      void navigator.clipboard.writeText(pastePrompt).catch(() => {});
+    }
+  }, [pastePrompt]);
 
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60);
@@ -274,27 +337,26 @@ export function PadiLlmEnvSetup({ padiId, padiName, isOwner }: Props) {
           </div>
         ) : (
           <div className="space-y-3">
-            {/* Countdown */}
-            <div className="flex items-center gap-2 text-xs text-zinc-500">
-              <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
-              Waiting for bot · {formatTime(timeLeft)}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 text-xs text-zinc-500">
+                <span className="w-1.5 h-1.5 bg-amber-400 rounded-full animate-pulse" />
+                Waiting for bot · {formatTime(timeLeft)}
+              </div>
             </div>
-            {/* Token display */}
-            <div className="flex items-center gap-2">
-              <code className="flex-1 font-mono text-xs bg-zinc-100 border border-zinc-200 rounded-lg px-2 py-1.5 truncate">
-                {inviteToken}
-              </code>
-              <button
-                onClick={copyToken}
-                className="shrink-0 p-1.5 rounded-lg border border-zinc-200 hover:bg-zinc-100 transition-colors text-zinc-500"
-                title="Copy token"
-              >
-                {tokenCopied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-            <p className="text-[10px] text-zinc-400">
-              Pass this token to your OpenClaw bot. It will call <code>POST /api/invites/accept</code> with this token to link itself to your padi membership.
-            </p>
+            <textarea
+              readOnly
+              value={pastePrompt}
+              rows={14}
+              className="w-full text-[11px] font-mono text-zinc-700 bg-zinc-50 border border-zinc-200 rounded-lg px-3 py-2.5 resize-none focus:outline-none leading-relaxed"
+              onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+            />
+            <button
+              onClick={copyToken}
+              className="w-full flex items-center justify-center gap-2 py-2 bg-zinc-900 text-white text-xs font-medium rounded-lg hover:bg-zinc-800 transition-colors"
+            >
+              {tokenCopied ? <><Check className="w-3.5 h-3.5" /> Copied!</> : <><Copy className="w-3.5 h-3.5" /> Copy Invite Prompt</>}
+            </button>
+            <p className="text-[10px] text-zinc-400 text-center">Auto-copied on open · paste to your OpenClaw chat</p>
           </div>
         )}
       </div>
