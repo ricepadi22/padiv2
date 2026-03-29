@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Copy, Key, Zap, Trash2, Bot } from "lucide-react";
+import { Check, Copy, Zap, Trash2, Bot } from "lucide-react";
 import { padisApi } from "../../api/padis.ts";
 import { invitesApi } from "../../api/invites.ts";
 
@@ -21,16 +21,15 @@ export function PadiLlmEnvSetup({ padiId, padiName, isOwner }: Props) {
     queryFn: () => padisApi.getLlmEnv(padiId),
   });
 
-  const [llmType, setLlmType] = useState<"api_key" | "oauth">("api_key");
   const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState("claude-haiku-4-5-20251001");
+  const [model, setModel] = useState("claude-sonnet-4-6");
   const [llmError, setLlmError] = useState("");
   const [llmSaved, setLlmSaved] = useState(false);
 
   const setLlmEnv = useMutation({
     mutationFn: () => padisApi.setLlmEnv(padiId, {
-      type: llmType,
-      config: llmType === "api_key" ? { apiKey, model } : {},
+      type: "api_key",
+      config: { apiKey, model },
     }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["padi-llm-env", padiId] });
@@ -159,75 +158,31 @@ export function PadiLlmEnvSetup({ padiId, padiName, isOwner }: Props) {
           </div>
         ) : (
           isOwner ? (
-            <div className="space-y-3">
-              {/* Type toggle */}
-              <div className="flex items-center border border-zinc-200 rounded-lg overflow-hidden w-fit">
-                <button
-                  onClick={() => setLlmType("api_key")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
-                    llmType === "api_key" ? "bg-zinc-900 text-white" : "text-zinc-500 hover:text-zinc-800"
-                  }`}
-                >
-                  <Key className="w-3 h-3" />
-                  API Key
-                </button>
-                <button
-                  onClick={() => setLlmType("oauth")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium transition-colors ${
-                    llmType === "oauth" ? "bg-zinc-900 text-white" : "text-zinc-500 hover:text-zinc-800"
-                  }`}
-                >
-                  <Zap className="w-3 h-3" />
-                  OAuth
-                </button>
-              </div>
-
-              {llmType === "api_key" && (
-                <div className="space-y-2">
-                  <input
-                    type="password"
-                    value={apiKey}
-                    onChange={(e) => setApiKey(e.target.value)}
-                    placeholder="sk-ant-..."
-                    className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-400"
-                  />
-                  <select
-                    value={model}
-                    onChange={(e) => setModel(e.target.value)}
-                    className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-amber-400 bg-white"
-                  >
-                    <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (fast)</option>
-                    <option value="claude-sonnet-4-6">claude-sonnet-4-6 (balanced)</option>
-                    <option value="claude-opus-4-6">claude-opus-4-6 (powerful)</option>
-                  </select>
-                  {llmError && <p className="text-xs text-red-500">{llmError}</p>}
-                  <button
-                    onClick={() => { setLlmError(""); setLlmEnv.mutate(); }}
-                    disabled={!apiKey.trim() || setLlmEnv.isPending}
-                    className="w-full py-2 bg-amber-500 text-white rounded-lg text-xs font-medium hover:bg-amber-600 disabled:opacity-50 transition-colors"
-                  >
-                    {llmSaved ? "Saved!" : setLlmEnv.isPending ? "Saving..." : "Save API Key"}
-                  </button>
-                </div>
-              )}
-
-              {llmType === "oauth" && (
-                <div className="space-y-2">
-                  <p className="text-xs text-zinc-500 leading-relaxed">
-                    Connect your Claude.ai subscription. Worker bots will use your account's compute.
-                  </p>
-                  <a
-                    href={`/api/auth/anthropic?padiId=${padiId}`}
-                    className="flex items-center justify-center gap-2 w-full py-2 bg-zinc-900 text-white rounded-lg text-xs font-medium hover:bg-zinc-800 transition-colors"
-                  >
-                    <Zap className="w-3.5 h-3.5" />
-                    Connect Claude.ai Account
-                  </a>
-                  <p className="text-[10px] text-zinc-400">
-                    Requires ANTHROPIC_OAUTH_CLIENT_ID to be configured on the server.
-                  </p>
-                </div>
-              )}
+            <div className="space-y-2">
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="sk-ant-..."
+                className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-400"
+              />
+              <select
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                className="w-full border border-zinc-300 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-amber-400 bg-white"
+              >
+                <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (fast)</option>
+                <option value="claude-sonnet-4-6">claude-sonnet-4-6 (balanced)</option>
+                <option value="claude-opus-4-6">claude-opus-4-6 (powerful)</option>
+              </select>
+              {llmError && <p className="text-xs text-red-500">{llmError}</p>}
+              <button
+                onClick={() => { setLlmError(""); setLlmEnv.mutate(); }}
+                disabled={!apiKey.trim() || setLlmEnv.isPending}
+                className="w-full py-2 bg-amber-500 text-white rounded-lg text-xs font-medium hover:bg-amber-600 disabled:opacity-50 transition-colors"
+              >
+                {llmSaved ? "Saved!" : setLlmEnv.isPending ? "Saving..." : "Save API Key"}
+              </button>
             </div>
           ) : (
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-xs text-zinc-400">
