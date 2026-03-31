@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { NavLink, useNavigate, Outlet, useLocation } from "react-router-dom";
-import { Shield, MessageSquare, Hammer, LogOut } from "lucide-react";
+import { Shield, MessageSquare, Hammer, LogOut, X } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext.tsx";
 import { botsApi } from "../api/bots.ts";
@@ -18,6 +19,7 @@ export function AppLayout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [showAvatarStatus, setShowAvatarStatus] = useState(false);
 
   const { data: botsData } = useQuery({
     queryKey: ["my-bots"],
@@ -35,6 +37,22 @@ export function AppLayout() {
   const isAvatarOnline = avatarBot
     ? (onlineData?.onlineBotIds ?? []).includes(avatarBot.id)
     : false;
+
+  const dotColor = !avatarBot
+    ? "bg-zinc-600"
+    : isAvatarOnline
+    ? "bg-green-400"
+    : avatarBot.status === "paused"
+    ? "bg-amber-400"
+    : "bg-zinc-600";
+
+  const statusLabel = !avatarBot
+    ? "No avatar"
+    : isAvatarOnline
+    ? "Online"
+    : avatarBot.status === "paused"
+    ? "Paused"
+    : "Offline";
 
   async function handleLogout() {
     await logout();
@@ -90,21 +108,11 @@ export function AppLayout() {
               <div className="w-7 h-7 rounded-full bg-green-950 border border-green-800 flex items-center justify-center text-xs font-bold text-green-400">
                 {initials(avatarBot.displayName)}
               </div>
-              <span
-                className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border-2 border-zinc-950 ${
-                  isAvatarOnline
-                    ? "bg-green-400"
-                    : avatarBot.status === "paused"
-                    ? "bg-amber-400"
-                    : "bg-zinc-600"
-                }`}
-              />
+              <span className={`absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border-2 border-zinc-950 ${dotColor}`} />
             </div>
             <div className="hidden lg:block flex-1 min-w-0">
               <div className="text-xs font-medium text-zinc-300 truncate">{avatarBot.displayName}</div>
-              <div className="text-[10px] text-zinc-600">
-                {isAvatarOnline ? "avatar · online" : avatarBot.status === "paused" ? "avatar · paused" : "avatar · offline"}
-              </div>
+              <div className="text-[10px] text-zinc-600">avatar · {statusLabel.toLowerCase()}</div>
             </div>
           </div>
         )}
@@ -133,8 +141,52 @@ export function AppLayout() {
         <Outlet />
       </main>
 
+      {/* Mobile avatar status sheet */}
+      {showAvatarStatus && (
+        <div className="md:hidden fixed inset-0 z-50 flex items-end" onClick={() => setShowAvatarStatus(false)}>
+          <div
+            className="w-full bg-zinc-950 border-t border-zinc-800 rounded-t-2xl p-5 pb-8 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Avatar Agent</span>
+              <button onClick={() => setShowAvatarStatus(false)} className="text-zinc-600 hover:text-zinc-300">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {avatarBot ? (
+              <div className="flex items-center gap-3">
+                <div className="relative">
+                  <div className="w-10 h-10 rounded-full bg-green-950 border border-green-800 flex items-center justify-center text-sm font-bold text-green-400">
+                    {initials(avatarBot.displayName)}
+                  </div>
+                  <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-zinc-950 ${dotColor}`} />
+                </div>
+                <div>
+                  <div className="text-sm font-medium text-white">{avatarBot.displayName}</div>
+                  <div className="text-xs text-zinc-500">{statusLabel}</div>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-zinc-500">No avatar agent. Invite one from any Middle World room.</p>
+            )}
+
+            <div className="pt-2 border-t border-zinc-800">
+              <button
+                onClick={() => void handleLogout()}
+                className="flex items-center gap-2 text-sm text-zinc-500 hover:text-zinc-300 transition-colors"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                Sign out
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Mobile bottom nav */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-zinc-950 border-t border-zinc-800 flex items-center justify-around z-50">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-zinc-950 border-t border-zinc-800 flex items-center justify-around z-40">
         {worlds.map(({ to, label, icon: Icon, dot }) => (
           <NavLink
             key={to}
@@ -156,33 +208,26 @@ export function AppLayout() {
             )}
           </NavLink>
         ))}
-        {/* Avatar bot or logout on mobile */}
-        {avatarBot ? (
-          <button
-            onClick={() => void handleLogout()}
-            className="flex flex-col items-center gap-0.5 px-4 py-2.5 flex-1 text-zinc-500 hover:text-zinc-300"
-            title="Sign out"
-          >
-            <div className="relative">
+
+        {/* Avatar status button — opens sheet, never logs out */}
+        <button
+          onClick={() => setShowAvatarStatus(true)}
+          className="flex flex-col items-center gap-0.5 px-4 py-2.5 flex-1 text-zinc-500 hover:text-zinc-300 transition-colors"
+        >
+          <div className="relative">
+            {avatarBot ? (
               <div className="w-5 h-5 rounded-full bg-green-950 border border-green-800 flex items-center justify-center text-[9px] font-bold text-green-400">
                 {initials(avatarBot.displayName)}
               </div>
-              <span className={`absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full border border-zinc-950 ${isAvatarOnline ? "bg-green-400" : "bg-zinc-600"}`} />
-            </div>
-            <span className="text-[10px] font-medium">{avatarBot.displayName}</span>
-          </button>
-        ) : (
-          <button
-            onClick={() => void handleLogout()}
-            className="flex flex-col items-center gap-0.5 px-4 py-2.5 flex-1 text-zinc-500 hover:text-zinc-300"
-            title="Sign out"
-          >
-            <div className="w-5 h-5 rounded-full bg-zinc-700 flex items-center justify-center text-[10px] font-bold text-zinc-200">
-              {user ? initials(user.displayName) : "?"}
-            </div>
-            <span className="text-[10px] font-medium">Sign out</span>
-          </button>
-        )}
+            ) : (
+              <div className="w-5 h-5 rounded-full bg-zinc-700 flex items-center justify-center text-[10px] font-bold text-zinc-400">
+                {user ? initials(user.displayName) : "?"}
+              </div>
+            )}
+            <span className={`absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full border border-zinc-950 ${dotColor}`} />
+          </div>
+          <span className="text-[10px] font-medium">{avatarBot ? avatarBot.displayName : "Avatar"}</span>
+        </button>
       </nav>
     </div>
   );
