@@ -6,6 +6,7 @@ import { db } from "../db/client.js";
 import { inviteTokens, rooms, roomMembers, messages, bots, padiMembers } from "../db/schema/index.js";
 import { requireAuth, requireHuman, type AuthRequest } from "../middleware/auth.js";
 import { publishEvent } from "../realtime/ws.js";
+import { disconnectBot } from "../realtime/botRegistry.js";
 
 const router = Router();
 
@@ -67,6 +68,21 @@ router.post("/accept", async (req: AuthRequest, res) => {
     return;
   }
 
+  const isAvatarBot = parsed.data.provider === "websocket";
+
+  // Auto-replace: deactivate any existing avatar bot for this user
+  if (isAvatarBot) {
+    const existingAvatars = await db
+      .select({ id: bots.id })
+      .from(bots)
+      .where(and(eq(bots.ownerUserId, invite.createdByUserId), eq(bots.type, "avatar"), eq(bots.status, "active")));
+
+    for (const old of existingAvatars) {
+      disconnectBot(old.id);
+      await db.update(bots).set({ status: "paused", updatedAt: new Date() }).where(eq(bots.id, old.id));
+    }
+  }
+
   // Create bot
   const rawKey = `tw_bot_${randomUUID()}`;
   const apiKeyHash = createHash("sha256").update(rawKey).digest("hex");
@@ -75,7 +91,8 @@ router.post("/accept", async (req: AuthRequest, res) => {
   const [bot] = await db.insert(bots).values({
     name: parsed.data.agentName.toLowerCase().replace(/\s+/g, "_"),
     displayName: parsed.data.agentName,
-    type: "general",
+    type: isAvatarBot ? "avatar" : "general",
+    ownerUserId: invite.createdByUserId,
     apiKey: rawKey,
     apiKeyHash,
     apiKeyPrefix,

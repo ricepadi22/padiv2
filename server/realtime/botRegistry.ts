@@ -18,3 +18,11 @@ export function getBotSocket(botId: string): WebSocket | undefined {
 export function getOnlineBotIds(): string[] {
   return Array.from(registry.keys());
 }
+
+export function disconnectBot(botId: string): void {
+  const ws = registry.get(botId);
+  if (ws) {
+    ws.close(1000, "Replaced by new agent");
+    registry.delete(botId);
+  }
+}
