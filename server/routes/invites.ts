@@ -44,7 +44,7 @@ router.post("/accept", async (req: AuthRequest, res) => {
   const schema = z.object({
     token: z.string(),
     agentName: z.string().min(1).max(100),
-    provider: z.enum(["http", "openclaw_gateway", "claude_api", "padi_lm", "websocket"]).default("websocket"),
+    provider: z.enum(["http", "openclaw_gateway", "claude_api", "padi_lm", "websocket", "poll"]).default("poll"),
     providerConfig: z.record(z.unknown()).default({}),
   });
   const parsed = schema.safeParse(req.body);
@@ -68,11 +68,22 @@ router.post("/accept", async (req: AuthRequest, res) => {
     return;
   }
 
-  const isAvatarBot = parsed.data.provider === "websocket";
+  const isAvatarBot = parsed.data.provider === "websocket" || parsed.data.provider === "poll";
 
-  // Auto-replace: find ALL bots previously created for this user via invites
-  // (uses invite history so it catches old bots that predate the ownerUserId field)
+  // For avatar bots: reuse existing one if present (rotate key, keep identity stable)
+  // This prevents breaking existing pollers when re-inviting to a new room.
+  let existingAvatarId: string | null = null;
   if (isAvatarBot) {
+    const [existing] = await db
+      .select({ id: bots.id })
+      .from(bots)
+      .where(and(eq(bots.ownerUserId, invite.createdByUserId), eq(bots.type, "avatar"), eq(bots.status, "active")))
+      .limit(1);
+    existingAvatarId = existing?.id ?? null;
+  }
+
+  // If no typed avatar found, check invite history for old-style bots (pre-ownerUserId)
+  if (isAvatarBot && !existingAvatarId) {
     const prevInvites = await db
       .select({ botId: inviteTokens.acceptedByBotId })
       .from(inviteTokens)
@@ -88,7 +99,6 @@ router.post("/accept", async (req: AuthRequest, res) => {
 
       for (const old of oldBots) {
         disconnectBot(old.id);
-        // Remove from all rooms
         await db.update(roomMembers)
           .set({ leftAt: new Date() })
           .where(and(eq(roomMembers.botId, old.id), isNull(roomMembers.leftAt)));
@@ -99,31 +109,64 @@ router.post("/accept", async (req: AuthRequest, res) => {
     }
   }
 
-  // Create bot
+  // Rotate API key (always fresh on each invite acceptance)
   const rawKey = `tw_bot_${randomUUID()}`;
   const apiKeyHash = createHash("sha256").update(rawKey).digest("hex");
   const apiKeyPrefix = rawKey.slice(0, 12);
 
-  const [bot] = await db.insert(bots).values({
-    name: parsed.data.agentName.toLowerCase().replace(/\s+/g, "_"),
-    displayName: parsed.data.agentName,
-    type: isAvatarBot ? "avatar" : "general",
-    ownerUserId: invite.createdByUserId,
-    apiKey: rawKey,
-    apiKeyHash,
-    apiKeyPrefix,
-    provider: parsed.data.provider,
-    providerConfig: parsed.data.providerConfig,
-  }).returning();
+  let bot: typeof bots.$inferSelect;
 
-  // Room-level invite: add bot to room
+  if (existingAvatarId) {
+    // Reuse existing avatar — update key and provider, keep identity
+    const [updated] = await db.update(bots)
+      .set({
+        apiKey: rawKey,
+        apiKeyHash,
+        apiKeyPrefix,
+        provider: parsed.data.provider,
+        providerConfig: parsed.data.providerConfig,
+        displayName: parsed.data.agentName,
+        status: "active",
+        updatedAt: new Date(),
+      })
+      .where(eq(bots.id, existingAvatarId))
+      .returning();
+    bot = updated!;
+  } else {
+    // Create new bot
+    const [created] = await db.insert(bots).values({
+      name: parsed.data.agentName.toLowerCase().replace(/\s+/g, "_"),
+      displayName: parsed.data.agentName,
+      type: isAvatarBot ? "avatar" : "general",
+      ownerUserId: invite.createdByUserId,
+      apiKey: rawKey,
+      apiKeyHash,
+      apiKeyPrefix,
+      provider: parsed.data.provider,
+      providerConfig: parsed.data.providerConfig,
+    }).returning();
+    bot = created!;
+  }
+
+  // Room-level invite: add bot to room (rejoin if previously removed)
   if (invite.roomId) {
-    await db.insert(roomMembers).values({
-      roomId: invite.roomId,
-      memberType: "bot",
-      botId: bot!.id,
-      role: "participant",
-    });
+    const [existing] = await db.select({ id: roomMembers.id })
+      .from(roomMembers)
+      .where(and(eq(roomMembers.roomId, invite.roomId), eq(roomMembers.botId, bot.id)))
+      .limit(1);
+
+    if (existing) {
+      await db.update(roomMembers)
+        .set({ leftAt: null, role: "participant" })
+        .where(eq(roomMembers.id, existing.id));
+    } else {
+      await db.insert(roomMembers).values({
+        roomId: invite.roomId,
+        memberType: "bot",
+        botId: bot.id,
+        role: "participant",
+      });
+    }
 
     const [sysMsg] = await db.insert(messages).values({
       roomId: invite.roomId,
@@ -138,7 +181,7 @@ router.post("/accept", async (req: AuthRequest, res) => {
   // Padi-level invite: link as personal bot on the creator's padi membership
   if (invite.padiId) {
     await db.update(padiMembers)
-      .set({ personalBotId: bot!.id })
+      .set({ personalBotId: bot.id })
       .where(
         and(
           eq(padiMembers.padiId, invite.padiId),
@@ -150,11 +193,11 @@ router.post("/accept", async (req: AuthRequest, res) => {
   // Mark token accepted
   await db.update(inviteTokens).set({
     status: "accepted",
-    acceptedByBotId: bot!.id,
+    acceptedByBotId: bot.id,
   }).where(eq(inviteTokens.id, invite.id));
 
   res.status(201).json({
-    bot: { ...bot!, apiKey: rawKey },
+    bot: { ...bot, apiKey: rawKey },
     roomId: invite.roomId ?? null,
     padiId: invite.padiId ?? null,
   });

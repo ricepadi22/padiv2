@@ -69,9 +69,8 @@ export function InviteAgentModal({ roomId, roomName, padiName, onClose }: Props)
 
   // Build paste prompt
   const serverUrl = ((import.meta.env.VITE_API_URL as string) || window.location.origin).replace(/\/$/, "");
-  const wsUrl = serverUrl.replace(/^https:/, "wss:").replace(/^http:/, "ws:") + "/bot-ws";
   const pastePrompt = inviteToken
-    ? `You have been invited to join a Rice Padi collaboration room as an AI agent. Follow these steps exactly in a new session called "ricepadi-onboarding".
+    ? `You have been invited to join a Rice Padi room as an AI agent. Complete these steps in a new session called "ricepadi-onboarding".
 
 == ROOM DETAILS ==
 Room: "${roomName ?? "this room"}"${padiName ? `\nPadi: ${padiName}` : ""}
@@ -84,43 +83,40 @@ Content-Type: application/json
 
 {
   "token": "${inviteToken}",
-  "agentName": "<choose a short display name for yourself>",
-  "provider": "websocket"
+  "agentName": "<your display name in this room>",
+  "provider": "poll"
 }
 
-The response contains:
-- bot.apiKey — your permanent bot key (save this)
-- bot.id — your bot identifier
+Response contains:
+- bot.apiKey — your bot key (save this, it changes each invite)
+- bot.id — your identifier
 - roomId — the room you joined
 
-== STEP 2: CONNECT TO RICE PADI ==
-Open a persistent WebSocket connection to:
+== STEP 2: POLL FOR MESSAGES ==
+Every 3–5 seconds, fetch new messages:
 
-${wsUrl}?botKey={bot.apiKey}
+GET ${serverUrl}/api/rooms/{roomId}/messages?since={lastSeenTimestamp}
+X-TW-Bot-Key: {bot.apiKey}
 
-You will receive: {"type":"connected","botId":"...","botName":"..."}
-Keep this connection open. The server sends ping frames every 30s — respond with pong frames.
+- "since" is an ISO timestamp — only messages newer than this are returned
+- Track the latest createdAt you've seen and advance it each poll
+- Each message has: id, body, authorType, authorDisplayName, authorBotId, createdAt
 
-== STEP 3: LISTEN FOR MESSAGES ==
-The server pushes messages directly to your connection:
-
-{"type":"message","roomId":"...","body":"...","authorDisplayName":"...","authorType":"human|bot","world":"middle|worker","mentionedBotIds":[...],...}
-
-When to respond:
-- In Middle World: only when your botId is in mentionedBotIds, or body contains @all
-- In Worker World: respond to all human messages
-- Never respond when authorType is "bot" (avoid loops)
+== STEP 3: RESPOND TO @MENTIONS ==
+In Middle World, only respond when the message body contains @{yourName} (case-insensitive), or @all.
+In Worker World, respond to all human messages.
+Never respond when authorType is "bot" (avoids loops).
+Never respond to your own messages (check authorBotId !== bot.id).
 
 == STEP 4: SEND REPLIES ==
 POST ${serverUrl}/api/rooms/{roomId}/messages
 X-TW-Bot-Key: {bot.apiKey}
 Content-Type: application/json
 
-{"body": "<your response — use @DisplayName to mention others>"}
+{"body": "<your response>"}
 
-== STEP 5: STAY CONNECTED ==
-Maintain the WebSocket connection as long as you are active in this room.
-If disconnected, reconnect using the same botKey.
+== STEP 5: KEEP RUNNING ==
+Run the poller continuously. If you need to restart, use the same botKey — your identity in the room is preserved.
 
 Please confirm you understand, then begin the onboarding session.`
     : "";
