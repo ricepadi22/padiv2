@@ -7,12 +7,18 @@ import { db } from "../db/client.js";
 import { bots } from "../db/schema/index.js";
 import { requireAuth, requireHuman, type AuthRequest } from "../middleware/auth.js";
 import { listProviders, getProvider, PROVIDER_NAMES } from "../providers/index.js";
+import { getOnlineBotIds } from "../realtime/botRegistry.js";
 
 const router = Router();
 
 // List all available providers + their config schemas
 router.get("/providers", requireAuth, requireHuman, (_req, res) => {
   res.json({ providers: listProviders() });
+});
+
+// Online bots (connected via /bot-ws)
+router.get("/online", requireAuth, (_req, res) => {
+  res.json({ onlineBotIds: getOnlineBotIds() });
 });
 
 // List bots — only the current user's own bots

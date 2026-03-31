@@ -43,7 +43,7 @@ router.post("/accept", async (req: AuthRequest, res) => {
   const schema = z.object({
     token: z.string(),
     agentName: z.string().min(1).max(100),
-    provider: z.enum(["http", "openclaw_gateway", "claude_api", "padi_lm"]).default("openclaw_gateway"),
+    provider: z.enum(["http", "openclaw_gateway", "claude_api", "padi_lm", "websocket"]).default("websocket"),
     providerConfig: z.record(z.unknown()).default({}),
   });
   const parsed = schema.safeParse(req.body);

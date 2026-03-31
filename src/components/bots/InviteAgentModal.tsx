@@ -69,8 +69,9 @@ export function InviteAgentModal({ roomId, roomName, padiName, onClose }: Props)
 
   // Build paste prompt
   const serverUrl = ((import.meta.env.VITE_API_URL as string) || window.location.origin).replace(/\/$/, "");
+  const wsUrl = serverUrl.replace(/^https:/, "wss:").replace(/^http:/, "ws:") + "/bot-ws";
   const pastePrompt = inviteToken
-    ? `You have been invited to join a Rice Padi collaboration room as an AI agent. Follow these instructions exactly in a new session called "ricepadi-onboarding".
+    ? `You have been invited to join a Rice Padi collaboration room as an AI agent. Follow these steps exactly in a new session called "ricepadi-onboarding".
 
 == ROOM DETAILS ==
 Room: "${roomName ?? "this room"}"${padiName ? `\nPadi: ${padiName}` : ""}
@@ -78,61 +79,50 @@ Server: ${serverUrl}
 Invite token (expires in 10 minutes): ${inviteToken}
 
 == STEP 1: ACCEPT THE INVITE ==
-Make this HTTP request to register yourself as a bot and join the room:
-
 POST ${serverUrl}/api/invites/accept
 Content-Type: application/json
 
 {
   "token": "${inviteToken}",
   "agentName": "<choose a short display name for yourself>",
-  "provider": "openclaw_gateway",
-  "providerConfig": {
-    "gatewayUrl": "<your OpenClaw gateway ws:// or wss:// URL>",
-    "agentId": "<your OpenClaw agent identifier>",
-    "apiKey": "<your gateway auth token from ~/.openclaw/openclaw.json>"
-  }
+  "provider": "websocket"
 }
 
-The response will contain:
-- "apiKey": your permanent bot API key for this room
-- "roomId": the room you have joined
-- "botId": your bot identifier
+The response contains:
+- bot.apiKey — your permanent bot key (save this)
+- bot.id — your bot identifier
+- roomId — the room you joined
 
-Save these — you will need them to participate.
+== STEP 2: CONNECT TO RICE PADI ==
+Open a persistent WebSocket connection to:
 
-== STEP 2: READ MESSAGES ==
-Poll for new messages every few seconds using your bot API key:
+${wsUrl}?botKey={bot.apiKey}
 
-GET ${serverUrl}/api/rooms/{roomId}/messages?since={lastTimestamp}
-X-TW-Bot-Key: {apiKey}
+You will receive: {"type":"connected","botId":"...","botName":"..."}
+Keep this connection open. The server sends ping frames every 30s — respond with pong frames.
 
-- Use the "since" query param (ISO timestamp) to get only new messages
-- Each message has: id, body, authorDisplayName, authorType ("user"|"bot"), createdAt
-- Store the latest createdAt you've seen so the next poll only fetches newer messages
+== STEP 3: LISTEN FOR MESSAGES ==
+The server pushes messages directly to your connection:
 
-== STEP 3: RESPOND TO @MENTIONS ==
-Only respond when a message body contains @{yourAgentName} (case-insensitive).
-You may also respond to @all which is a broadcast to all agents.
-Ignore messages where authorType is "bot" (to avoid loops).
+{"type":"message","roomId":"...","body":"...","authorDisplayName":"...","authorType":"human|bot","world":"middle|worker","mentionedBotIds":[...],...}
 
-To send a reply:
+When to respond:
+- In Middle World: only when your botId is in mentionedBotIds, or body contains @all
+- In Worker World: respond to all human messages
+- Never respond when authorType is "bot" (avoid loops)
 
+== STEP 4: SEND REPLIES ==
 POST ${serverUrl}/api/rooms/{roomId}/messages
-X-TW-Bot-Key: {apiKey}
+X-TW-Bot-Key: {bot.apiKey}
 Content-Type: application/json
 
-{
-  "body": "<your response — you may use @DisplayName to mention others>"
-}
+{"body": "<your response — use @DisplayName to mention others>"}
 
-== STEP 4: ONGOING BEHAVIOUR ==
-- Stay in character as a helpful AI collaborator
-- Only respond when directly @mentioned or when @all is used
-- Keep polling continuously (every 3–5 seconds) while the session is active
-- You can @mention the human or other bots in your replies
+== STEP 5: STAY CONNECTED ==
+Maintain the WebSocket connection as long as you are active in this room.
+If disconnected, reconnect using the same botKey.
 
-Please confirm you understand these instructions, then start the onboarding session.`
+Please confirm you understand, then begin the onboarding session.`
     : "";
 
   // Auto-copy when prompt is ready
