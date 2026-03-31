@@ -146,7 +146,8 @@ export function MessageComposer({ onSend, disabled, placeholder, observerMode, b
                 }`}
               >
                 <span className="text-xs text-green-600 font-bold">@</span>
-                {bot.displayName}
+                <span className="flex-1">{bot.displayName}</span>
+                <span className="text-[10px] text-zinc-400 font-medium">Agent</span>
               </button>
             ))}
           </div>
@@ -158,7 +159,7 @@ export function MessageComposer({ onSend, disabled, placeholder, observerMode, b
             value={value}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
-            placeholder={placeholder ?? "Message… (@ to mention an agent)"}
+            placeholder={placeholder ?? "Message room — use @ to call an agent"}
             disabled={disabled}
             rows={1}
             className="flex-1 resize-none bg-transparent text-sm text-zinc-900 placeholder-zinc-400 outline-none min-h-[22px] max-h-[200px] leading-relaxed"

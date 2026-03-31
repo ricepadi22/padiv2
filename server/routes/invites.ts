@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { randomUUID, createHash } from "crypto";
 import { db } from "../db/client.js";
@@ -70,16 +70,32 @@ router.post("/accept", async (req: AuthRequest, res) => {
 
   const isAvatarBot = parsed.data.provider === "websocket";
 
-  // Auto-replace: deactivate any existing avatar bot for this user
+  // Auto-replace: find ALL bots previously created for this user via invites
+  // (uses invite history so it catches old bots that predate the ownerUserId field)
   if (isAvatarBot) {
-    const existingAvatars = await db
-      .select({ id: bots.id })
-      .from(bots)
-      .where(and(eq(bots.ownerUserId, invite.createdByUserId), eq(bots.type, "avatar"), eq(bots.status, "active")));
+    const prevInvites = await db
+      .select({ botId: inviteTokens.acceptedByBotId })
+      .from(inviteTokens)
+      .where(and(eq(inviteTokens.createdByUserId, invite.createdByUserId), eq(inviteTokens.status, "accepted")));
 
-    for (const old of existingAvatars) {
-      disconnectBot(old.id);
-      await db.update(bots).set({ status: "paused", updatedAt: new Date() }).where(eq(bots.id, old.id));
+    const prevBotIds = prevInvites.map((i) => i.botId).filter(Boolean) as string[];
+
+    if (prevBotIds.length > 0) {
+      const oldBots = await db
+        .select({ id: bots.id })
+        .from(bots)
+        .where(and(inArray(bots.id, prevBotIds), eq(bots.status, "active")));
+
+      for (const old of oldBots) {
+        disconnectBot(old.id);
+        // Remove from all rooms
+        await db.update(roomMembers)
+          .set({ leftAt: new Date() })
+          .where(and(eq(roomMembers.botId, old.id), isNull(roomMembers.leftAt)));
+        await db.update(bots)
+          .set({ status: "paused", updatedAt: new Date() })
+          .where(eq(bots.id, old.id));
+      }
     }
   }
 

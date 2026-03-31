@@ -19,6 +19,6 @@ export interface Bot {
 }
 
 export const botsApi = {
-  list: () =>
-    apiFetch<{ bots: Bot[] }>("/api/bots"),
+  list: () => apiFetch<{ bots: Bot[] }>("/api/bots"),
+  online: () => apiFetch<{ onlineBotIds: string[] }>("/api/bots/online"),
 };
