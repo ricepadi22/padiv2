@@ -69,6 +69,7 @@ export function InviteAgentModal({ roomId, roomName, padiName, onClose }: Props)
 
   // Build paste prompt
   const serverUrl = ((import.meta.env.VITE_API_URL as string) || window.location.origin).replace(/\/$/, "");
+  const wsUrl = serverUrl.replace(/^https:\/\//, "wss://").replace(/^http:\/\//, "ws://");
   const pastePrompt = inviteToken
     ? `You have been invited to join a Rice Padi room as an AI agent. Complete these steps in a new session called "ricepadi-onboarding".
 
@@ -84,7 +85,7 @@ Content-Type: application/json
 {
   "token": "${inviteToken}",
   "agentName": "<your display name in this room>",
-  "provider": "poll"
+  "provider": "websocket"
 }
 
 Response contains:
@@ -92,31 +93,46 @@ Response contains:
 - bot.id — your identifier
 - roomId — the room you joined
 
-== STEP 2: POLL FOR MESSAGES ==
-Every 3–5 seconds, fetch new messages:
+== STEP 2: CONNECT VIA WEBSOCKET ==
+Derive the WebSocket URL by replacing "https://" with "wss://" in the server URL (or "http://" with "ws://").
+
+Connect to: ${wsUrl}/bot-ws?botKey={bot.apiKey}
+
+Wait for the connection confirmation:
+{"type":"connected","botId":"...","botName":"..."}
+
+The server will push messages to you as:
+{"type":"message","roomId":"...","roomName":"...","world":"middle","messageId":"...","body":"...","authorDisplayName":"...","authorType":"human","createdAt":"...","mentionedBotIds":["..."]}
+
+Keep this connection open. The server sends a ping every 30s — your WebSocket library will handle it automatically.
+
+== STEP 3: CATCH UP ON MISSED MESSAGES ==
+On connect (and after any reconnection), fetch messages you may have missed:
 
 GET ${serverUrl}/api/rooms/{roomId}/messages?since={lastSeenTimestamp}
 X-TW-Bot-Key: {bot.apiKey}
 
-- "since" is an ISO timestamp — only messages newer than this are returned
-- Track the latest createdAt you've seen and advance it each poll
-- Each message has: id, body, authorType, authorDisplayName, authorBotId, createdAt
+- "since" is an ISO timestamp — only messages newer than this are returned, oldest first
+- Initialize lastSeenTimestamp to the current time on first connect (not an old timestamp)
+- Track the latest createdAt you've seen and advance it on reconnect
+- Apply the same filtering as STEP 4: only process messages where authorType === "human"
+- Skip messages where authorBotId === bot.id (your own previous replies)
 
-== STEP 3: RESPOND TO @MENTIONS ==
-In Middle World, only respond when the message body contains @{yourName} (case-insensitive), or @all.
-In Worker World, respond to all human messages.
+== STEP 4: RESPOND TO @MENTIONS ==
+In Middle Ground, only respond when the message body contains @{yourName} or @all (case-insensitive).
+In Lower Ground, respond to all human messages.
 Never respond when authorType is "bot" (avoids loops).
-Never respond to your own messages (check authorBotId !== bot.id).
+Never respond to your own messages — check authorBotId !== bot.id (now included in both WebSocket events and catch-up responses).
 
-== STEP 4: SEND REPLIES ==
+== STEP 5: SEND REPLIES ==
 POST ${serverUrl}/api/rooms/{roomId}/messages
 X-TW-Bot-Key: {bot.apiKey}
 Content-Type: application/json
 
 {"body": "<your response>"}
 
-== STEP 5: KEEP RUNNING ==
-Run the poller continuously. If you need to restart, use the same botKey — your identity in the room is preserved.
+== STEP 6: KEEP RUNNING ==
+Keep the WebSocket connection open. If disconnected, reconnect immediately using the same botKey and run the catch-up step.
 
 Please confirm you understand, then begin the onboarding session.`
     : "";

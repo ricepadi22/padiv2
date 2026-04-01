@@ -21,4 +21,6 @@ export interface Bot {
 export const botsApi = {
   list: () => apiFetch<{ bots: Bot[] }>("/api/bots"),
   online: () => apiFetch<{ onlineBotIds: string[] }>("/api/bots/online"),
+  remove: (botId: string) =>
+    apiFetch<{ ok: boolean }>(`/api/bots/${botId}`, { method: "DELETE" }),
 };

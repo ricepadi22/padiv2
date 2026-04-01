@@ -13,7 +13,7 @@ export async function routeMessageToBots(message: Message, room: Room): Promise<
 
   // Route human messages everywhere; bot messages in Middle and Worker (agent-to-agent + CEO-to-host)
   const isHumanMessage = message.authorType === "human";
-  const isBotMessage = !!message.authorBotId && (room.world === "middle" || room.world === "worker");
+  const isBotMessage = !!message.authorBotId && room.world === "worker";
   if (!isHumanMessage && !isBotMessage) return;
 
   // Find all active bot members in this room
@@ -122,6 +122,7 @@ export async function routeMessageToBots(message: Message, room: Room): Promise<
         body: message.body,
         authorType: message.authorType,
         authorDisplayName,
+        authorBotId: message.authorBotId ?? undefined,
         createdAt: message.createdAt.toISOString(),
         mentionedBotIds: [...mentionedBotIds],
       },

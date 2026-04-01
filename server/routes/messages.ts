@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and, isNull, lt, desc } from "drizzle-orm";
+import { eq, and, isNull, lt, gt, desc, asc } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/client.js";
 import { messages, rooms, roomMembers } from "../db/schema/index.js";
@@ -13,6 +13,25 @@ const router = Router({ mergeParams: true });
 router.get("/", requireAuth, async (req: AuthRequest, res) => {
   const limit = Math.min(Number(req.query.limit) || 50, 100);
   const before = req.query.before as string | undefined;
+  const since = req.query.since as string | undefined;
+
+  if (before && since) {
+    res.status(400).json({ error: "Cannot use both before and since" });
+    return;
+  }
+
+  if (since) {
+    const result = await db.select().from(messages).where(
+      and(
+        eq(messages.roomId, req.params.roomId!),
+        isNull(messages.deletedAt),
+        gt(messages.createdAt, new Date(since)),
+      )
+    ).orderBy(asc(messages.createdAt)).limit(limit);
+
+    res.json({ messages: result });
+    return;
+  }
 
   const result = await db.select().from(messages).where(
     and(

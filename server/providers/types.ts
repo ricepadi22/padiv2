@@ -15,6 +15,7 @@ export interface DispatchContext {
     body: string;
     authorType: string;
     authorDisplayName: string;
+    authorBotId?: string;
     createdAt: string;
     mentionedBotIds: string[];
   };

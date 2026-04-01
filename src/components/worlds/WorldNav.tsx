@@ -2,9 +2,9 @@ import { Link, useParams } from "react-router-dom";
 import { Shield, MessageSquare, Hammer } from "lucide-react";
 
 const worlds = [
-  { id: "higher", label: "Higher", icon: Shield, activeClass: "text-amber-600 border-amber-400" },
-  { id: "middle", label: "Middle", icon: MessageSquare, activeClass: "text-green-600 border-green-400" },
-  { id: "worker", label: "Worker", icon: Hammer, activeClass: "text-blue-600 border-blue-400" },
+  { id: "higher", label: "Higher Ground", icon: Shield, activeClass: "text-amber-600 border-amber-400" },
+  { id: "middle", label: "Middle Ground", icon: MessageSquare, activeClass: "text-green-600 border-green-400" },
+  { id: "worker", label: "Lower Ground", icon: Hammer, activeClass: "text-blue-600 border-blue-400" },
 ] as const;
 
 interface WorldNavProps {

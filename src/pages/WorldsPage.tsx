@@ -11,9 +11,9 @@ import { useAuth } from "../context/AuthContext.tsx";
 import { usePadi } from "../context/PadiContext.tsx";
 
 const worldLabel: Record<string, string> = {
-  higher: "Higher World",
-  middle: "Middle World",
-  worker: "Worker World",
+  higher: "Higher Ground",
+  middle: "Middle Ground",
+  worker: "Lower Ground",
 };
 
 const worldAccent: Record<string, string> = {
@@ -123,7 +123,7 @@ function HigherWorldEmpty({ onExplore }: { onExplore: () => void }) {
       <div className="w-14 h-14 rounded-2xl bg-amber-50 flex items-center justify-center mb-4">
         <span className="text-2xl">🌾</span>
       </div>
-      <h3 className="text-sm font-semibold text-zinc-800 mb-1">Welcome to Padi Hub</h3>
+      <h3 className="text-sm font-semibold text-zinc-800 mb-1">Welcome to Higher Ground</h3>
       <p className="text-xs text-zinc-400 max-w-xs leading-relaxed">
         Create a padi to start your own community, set its LLM environment, and invite your personal agent. Or explore public padis to join.
       </p>
@@ -306,14 +306,14 @@ function WorkerWorldView({ padiId }: { padiId: string }) {
         <div className="w-14 h-14 rounded-2xl bg-blue-50 flex items-center justify-center mb-4">
           <Lock className="w-6 h-6 text-blue-400" />
         </div>
-        <h3 className="text-sm font-semibold text-zinc-800 mb-1">Worker World is locked</h3>
+        <h3 className="text-sm font-semibold text-zinc-800 mb-1">Lower Ground is locked</h3>
         <p className="text-xs text-zinc-400 max-w-xs leading-relaxed mb-4">
-          Configure an LLM environment for this padi to unlock Worker World. All spawned bots will inherit it.
+          Configure an LLM environment for this padi to unlock Lower Ground. All spawned bots will inherit it.
         </p>
         <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl">
           <Zap className="w-3.5 h-3.5 text-blue-500 shrink-0" />
           <p className="text-xs text-blue-700">
-            Go to <strong>Padi Hub → LLM tab</strong> to set your API key or connect Claude.ai.
+            Go to <strong>Higher Ground → LLM tab</strong> to set your API key or connect Claude.ai.
           </p>
         </div>
       </div>
@@ -325,7 +325,7 @@ function WorkerWorldView({ padiId }: { padiId: string }) {
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-100 shrink-0">
-        <span className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Worker Rooms</span>
+        <span className="text-xs font-semibold text-zinc-400 uppercase tracking-widest">Lower Ground Rooms</span>
         <button
           onClick={() => setShowCreate(true)}
           className="flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-900 font-medium transition-colors"
@@ -340,7 +340,7 @@ function WorkerWorldView({ padiId }: { padiId: string }) {
         ) : rooms.length === 0 ? (
           <div className="px-4 py-10 text-center">
             <p className="text-sm text-zinc-400">No worker rooms yet.</p>
-            <p className="text-xs text-zinc-300 mt-1">Use "Send to Work" from a Middle World room, or create one directly.</p>
+            <p className="text-xs text-zinc-300 mt-1">Use "Send to Work" from a Middle Ground room, or create one directly.</p>
           </div>
         ) : (
           rooms.map((room: Room) => (
@@ -354,7 +354,7 @@ function WorkerWorldView({ padiId }: { padiId: string }) {
       {showCreate && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6 space-y-4">
-            <h2 className="text-base font-semibold text-zinc-900">New Worker Room</h2>
+            <h2 className="text-base font-semibold text-zinc-900">New Lower Ground Room</h2>
             <p className="text-xs text-zinc-400">The AI host will spawn bots to complete tasks here.</p>
             <input
               autoFocus value={newName} onChange={(e) => setNewName(e.target.value)}

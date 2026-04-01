@@ -31,6 +31,7 @@ export const websocketProvider: BotProvider = {
       body: ctx.message.body,
       authorDisplayName: ctx.message.authorDisplayName,
       authorType: ctx.message.authorType,
+      authorBotId: ctx.message.authorBotId ?? null,
       createdAt: ctx.message.createdAt,
       mentionedBotIds: ctx.message.mentionedBotIds,
     }));

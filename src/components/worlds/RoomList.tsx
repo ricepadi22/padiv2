@@ -5,7 +5,7 @@ import { roomsApi, type Room, type WorldType } from "../../api/rooms.ts";
 
 const worldConfig: Record<WorldType, { empty: string; createLabel: string }> = {
   higher: {
-    empty: "No private rooms yet. Use 'Step Away' in a Middle room to create one.",
+    empty: "No private rooms yet. Use 'Step Away' in a Middle Ground room to create one.",
     createLabel: "New room",
   },
   middle: {

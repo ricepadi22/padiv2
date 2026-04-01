@@ -89,7 +89,7 @@ export function DispatchModal({ roomId, onClose }: DispatchModalProps) {
           ) : (
             <div className="flex items-center gap-2.5 px-3 py-2.5 bg-zinc-50 border border-zinc-200 rounded-xl">
               <Zap className="w-4 h-4 text-zinc-400 shrink-0" />
-              <p className="text-xs text-zinc-500">No padi AI host configured (optional). Set one up in Higher World → AI Host tab.</p>
+              <p className="text-xs text-zinc-500">No padi AI host configured (optional). Set one up in Higher Ground → AI Host tab.</p>
             </div>
           )}
 

@@ -122,7 +122,7 @@ export function MessageComposer({ onSend, disabled, placeholder, observerMode, b
     return (
       <div className="px-4 py-4 border-t border-zinc-100">
         <div className="text-xs text-zinc-400 text-center">
-          You are observing — humans manage this space from Middle World
+          You are observing — humans manage this space from Middle Ground
         </div>
       </div>
     );

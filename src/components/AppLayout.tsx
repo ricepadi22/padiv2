@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { NavLink, useNavigate, Outlet, useLocation } from "react-router-dom";
-import { Shield, MessageSquare, Hammer, LogOut, X } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { Shield, MessageSquare, Hammer, LogOut, X, Trash2 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext.tsx";
 import { botsApi } from "../api/bots.ts";
 
 const worlds = [
-  { to: "/worlds/higher", label: "Padi Hub", icon: Shield, dot: "bg-amber-400" },
-  { to: "/worlds/middle", label: "Middle", icon: MessageSquare, dot: "bg-green-400" },
-  { to: "/worlds/worker", label: "Worker", icon: Hammer, dot: "bg-blue-400" },
+  { to: "/worlds/higher", label: "Higher Ground", icon: Shield, dot: "bg-amber-400" },
+  { to: "/worlds/middle", label: "Middle Ground", icon: MessageSquare, dot: "bg-green-400" },
+  { to: "/worlds/worker", label: "Lower Ground", icon: Hammer, dot: "bg-blue-400" },
 ];
 
 function initials(name: string) {
@@ -53,6 +53,16 @@ export function AppLayout() {
     : avatarBot.status === "paused"
     ? "Paused"
     : "Offline";
+
+  const queryClient = useQueryClient();
+
+  const removeAvatar = useMutation({
+    mutationFn: () => botsApi.remove(avatarBot!.id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["my-bots"] });
+      void queryClient.invalidateQueries({ queryKey: ["bots-online"] });
+    },
+  });
 
   async function handleLogout() {
     await logout();
@@ -114,6 +124,13 @@ export function AppLayout() {
               <div className="text-xs font-medium text-zinc-300 truncate">{avatarBot.displayName}</div>
               <div className="text-[10px] text-zinc-600">avatar · {statusLabel.toLowerCase()}</div>
             </div>
+            <button
+              onClick={() => { if (window.confirm("Remove your avatar agent?")) removeAvatar.mutate(); }}
+              className="hidden lg:block text-zinc-700 hover:text-red-500 transition-colors shrink-0 ml-auto"
+              title="Remove agent"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
           </div>
         )}
 
@@ -156,20 +173,29 @@ export function AppLayout() {
             </div>
 
             {avatarBot ? (
-              <div className="flex items-center gap-3">
-                <div className="relative">
-                  <div className="w-10 h-10 rounded-full bg-green-950 border border-green-800 flex items-center justify-center text-sm font-bold text-green-400">
-                    {initials(avatarBot.displayName)}
+              <>
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <div className="w-10 h-10 rounded-full bg-green-950 border border-green-800 flex items-center justify-center text-sm font-bold text-green-400">
+                      {initials(avatarBot.displayName)}
+                    </div>
+                    <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-zinc-950 ${dotColor}`} />
                   </div>
-                  <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-zinc-950 ${dotColor}`} />
+                  <div>
+                    <div className="text-sm font-medium text-white">{avatarBot.displayName}</div>
+                    <div className="text-xs text-zinc-500">{statusLabel}</div>
+                  </div>
                 </div>
-                <div>
-                  <div className="text-sm font-medium text-white">{avatarBot.displayName}</div>
-                  <div className="text-xs text-zinc-500">{statusLabel}</div>
-                </div>
-              </div>
+                <button
+                  onClick={() => { if (window.confirm("Remove your avatar agent?")) { removeAvatar.mutate(); setShowAvatarStatus(false); } }}
+                  className="flex items-center gap-1.5 text-xs text-zinc-600 hover:text-red-500 transition-colors mt-2"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Remove agent
+                </button>
+              </>
             ) : (
-              <p className="text-sm text-zinc-500">No avatar agent. Invite one from any Middle World room.</p>
+              <p className="text-sm text-zinc-500">No avatar agent. Invite one from any Middle Ground room.</p>
             )}
 
             <div className="pt-2 border-t border-zinc-800">

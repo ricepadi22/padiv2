@@ -1,13 +1,13 @@
 import { Router } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { createHash } from "crypto";
 import { z } from "zod";
 import { randomUUID } from "crypto";
 import { db } from "../db/client.js";
-import { bots } from "../db/schema/index.js";
+import { bots, roomMembers } from "../db/schema/index.js";
 import { requireAuth, requireHuman, type AuthRequest } from "../middleware/auth.js";
 import { listProviders, getProvider, PROVIDER_NAMES } from "../providers/index.js";
-import { getOnlineBotIds } from "../realtime/botRegistry.js";
+import { getOnlineBotIds, disconnectBot } from "../realtime/botRegistry.js";
 
 const router = Router();
 
@@ -148,6 +148,25 @@ router.post("/:id/rotate-key", requireAuth, requireHuman, async (req: AuthReques
     .where(eq(bots.id, bot.id));
 
   res.json({ apiKey: rawKey });
+});
+
+// Remove (soft-delete) a bot
+router.delete("/:id", requireAuth, requireHuman, async (req: AuthRequest, res) => {
+  const [bot] = await db.select().from(bots).where(eq(bots.id, req.params.id!)).limit(1);
+  if (!bot) { res.status(404).json({ error: "Bot not found" }); return; }
+  if (bot.ownerUserId !== req.user!.id) { res.status(403).json({ error: "Forbidden" }); return; }
+
+  disconnectBot(bot.id);
+
+  await db.update(roomMembers)
+    .set({ leftAt: new Date() })
+    .where(and(eq(roomMembers.botId, bot.id), isNull(roomMembers.leftAt)));
+
+  await db.update(bots)
+    .set({ status: "paused", updatedAt: new Date() })
+    .where(eq(bots.id, bot.id));
+
+  res.json({ ok: true });
 });
 
 function safeBotObj(bot: typeof bots.$inferSelect) {

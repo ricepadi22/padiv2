@@ -160,7 +160,7 @@ export function PadiList({ selectedPadiId, onSelect, showingDiscovery, onShowDis
 
             <div className="flex items-center gap-2 px-3 py-2.5 bg-zinc-50 rounded-xl border border-zinc-200 text-xs text-zinc-500">
               <Lock className="w-3.5 h-3.5 shrink-0 text-zinc-400" />
-              <span>You can set up the AI host from Higher World after creating.</span>
+              <span>You can set up the AI host from Higher Ground after creating.</span>
             </div>
 
             <div className="flex gap-3">
