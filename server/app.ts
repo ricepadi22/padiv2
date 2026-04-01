@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import morgan from "morgan";
 import authRoutes from "./routes/auth.js";
 import roomRoutes from "./routes/rooms.js";
 import messageRoutes from "./routes/messages.js";
@@ -17,6 +18,7 @@ export function createApp() {
     credentials: true,
   }));
 
+  app.use(morgan("dev"));
   app.use(express.json());
 
   app.use("/api/auth", authRoutes);

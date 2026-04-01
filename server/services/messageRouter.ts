@@ -4,6 +4,11 @@ import { bots, botDispatchLog, messages, roomMembers, rooms, users } from "../db
 import { getProvider } from "../providers/index.js";
 import { publishEvent } from "../realtime/ws.js";
 
+// Defense-in-depth: cap dispatches per bot per room to MAX_PER_MINUTE
+// Applied in Middle World only (Worker World allows high-frequency agent interactions)
+const recentDispatches = new Map<string, number[]>();
+const MAX_PER_MINUTE = 5;
+
 type Message = typeof messages.$inferSelect;
 type Room = typeof rooms.$inferSelect;
 
@@ -59,14 +64,16 @@ export async function routeMessageToBots(message: Message, room: Room): Promise<
   // Worker World keeps broadcast behavior (autonomous task processing).
   let botsToDispatch = activeBots;
   if (room.world === "middle") {
-    const bodyLower = message.body.toLowerCase();
     const mentionAll = /@all\b/i.test(message.body);
     if (mentionAll) {
       botsToDispatch = activeBots.filter((b) => b.id !== message.authorBotId);
     } else {
       botsToDispatch = activeBots.filter((b) => {
         if (b.id === message.authorBotId) return false;
-        return bodyLower.includes(`@${b.displayName.toLowerCase()}`);
+        // Use word-boundary regex so "@Dan" doesn't match "@Daniel"
+        const escaped = b.displayName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const re = new RegExp(`@${escaped}(?:\\b|\\s|$)`, "i");
+        return re.test(message.body);
       });
     }
     if (botsToDispatch.length === 0) return;
@@ -78,6 +85,26 @@ export async function routeMessageToBots(message: Message, room: Room): Promise<
   for (const bot of botsToDispatch) {
     // Never route a bot's message back to itself (already filtered above, guard for Worker World)
     if (bot.id === message.authorBotId) continue;
+
+    // Rate-limit in Middle World: max 5 dispatches per bot per room per minute
+    if (room.world === "middle") {
+      const key = `${bot.id}:${room.id}`;
+      const now = Date.now();
+      const recent = (recentDispatches.get(key) ?? []).filter((t) => now - t < 60_000);
+      if (recent.length >= MAX_PER_MINUTE) {
+        await db.insert(botDispatchLog).values({
+          messageId: message.id,
+          botId: bot.id,
+          provider: bot.provider,
+          status: "skipped",
+          lastError: "Rate limit: too many dispatches in the last minute",
+          dispatchedAt: new Date(),
+        });
+        continue;
+      }
+      recent.push(now);
+      recentDispatches.set(key, recent);
+    }
 
     const provider = getProvider(bot.provider);
 
@@ -160,16 +187,36 @@ export async function routeMessageToBots(message: Message, room: Room): Promise<
             publishEvent(room.id, { type: "message.new", message: replyMsg });
           }
         }
+      } else {
+        // Notify room subscribers that this agent failed to receive the message
+        publishEvent(room.id, {
+          type: "dispatch.failed",
+          roomId: room.id,
+          botId: bot.id,
+          botDisplayName: bot.displayName,
+          messageId: message.id,
+          error: result.error ?? "Unknown error",
+        });
       }
     } catch (err) {
+      const errMsg = err instanceof Error ? err.message : "Unknown error";
       await db.update(botDispatchLog)
         .set({
           status: "failed",
-          lastError: err instanceof Error ? err.message : "Unknown error",
+          lastError: errMsg,
           attemptCount: 1,
           dispatchedAt: new Date(),
         })
         .where(eq(botDispatchLog.id, logEntry!.id));
+
+      publishEvent(room.id, {
+        type: "dispatch.failed",
+        roomId: room.id,
+        botId: bot.id,
+        botDisplayName: bot.displayName,
+        messageId: message.id,
+        error: errMsg,
+      });
     }
   }
 }

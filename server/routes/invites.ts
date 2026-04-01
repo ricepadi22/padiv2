@@ -1,12 +1,12 @@
 import { Router } from "express";
-import { eq, and, inArray, isNull } from "drizzle-orm";
+import { eq, and, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { randomUUID, createHash } from "crypto";
 import { db } from "../db/client.js";
 import { inviteTokens, rooms, roomMembers, messages, bots, padiMembers } from "../db/schema/index.js";
 import { requireAuth, requireHuman, type AuthRequest } from "../middleware/auth.js";
 import { publishEvent } from "../realtime/ws.js";
-import { disconnectBot } from "../realtime/botRegistry.js";
+
 
 const router = Router();
 
@@ -70,43 +70,35 @@ router.post("/accept", async (req: AuthRequest, res) => {
 
   const isAvatarBot = parsed.data.provider === "websocket" || parsed.data.provider === "poll";
 
-  // For avatar bots: reuse existing one if present (rotate key, keep identity stable)
-  // This prevents breaking existing pollers when re-inviting to a new room.
+  // For avatar bots: reuse existing one with the SAME display name (rotate key, keep identity stable).
+  // Scoped by name so inviting "Chongi" won't hijack "Saniel"'s bot record.
   let existingAvatarId: string | null = null;
   if (isAvatarBot) {
     const [existing] = await db
       .select({ id: bots.id })
       .from(bots)
-      .where(and(eq(bots.ownerUserId, invite.createdByUserId), eq(bots.type, "avatar"), eq(bots.status, "active")))
+      .where(and(
+        eq(bots.ownerUserId, invite.createdByUserId),
+        eq(bots.type, "avatar"),
+        eq(bots.status, "active"),
+        eq(bots.displayName, parsed.data.agentName),
+      ))
       .limit(1);
     existingAvatarId = existing?.id ?? null;
   }
 
-  // If no typed avatar found, check invite history for old-style bots (pre-ownerUserId)
+  // If no active avatar found by name, look for a paused one to resurrect (same name only)
   if (isAvatarBot && !existingAvatarId) {
-    const prevInvites = await db
-      .select({ botId: inviteTokens.acceptedByBotId })
-      .from(inviteTokens)
-      .where(and(eq(inviteTokens.createdByUserId, invite.createdByUserId), eq(inviteTokens.status, "accepted")));
-
-    const prevBotIds = prevInvites.map((i) => i.botId).filter(Boolean) as string[];
-
-    if (prevBotIds.length > 0) {
-      const oldBots = await db
-        .select({ id: bots.id })
-        .from(bots)
-        .where(and(inArray(bots.id, prevBotIds), eq(bots.status, "active")));
-
-      for (const old of oldBots) {
-        disconnectBot(old.id);
-        await db.update(roomMembers)
-          .set({ leftAt: new Date() })
-          .where(and(eq(roomMembers.botId, old.id), isNull(roomMembers.leftAt)));
-        await db.update(bots)
-          .set({ status: "paused", updatedAt: new Date() })
-          .where(eq(bots.id, old.id));
-      }
-    }
+    const [oldBot] = await db
+      .select({ id: bots.id })
+      .from(bots)
+      .where(and(
+        eq(bots.displayName, parsed.data.agentName),
+        eq(bots.type, "avatar"),
+        eq(bots.status, "paused"),
+      ))
+      .limit(1);
+    if (oldBot) existingAvatarId = oldBot.id;
   }
 
   // Rotate API key (always fresh on each invite acceptance)
@@ -176,6 +168,18 @@ router.post("/accept", async (req: AuthRequest, res) => {
     }).returning();
 
     publishEvent(invite.roomId, { type: "message.new", roomId: invite.roomId, message: sysMsg });
+
+    // Notify subscribers that a new member joined (updates member count in real time)
+    publishEvent(invite.roomId, {
+      type: "member.joined",
+      roomId: invite.roomId,
+      member: {
+        memberType: "bot",
+        botId: bot.id,
+        displayName: bot.displayName,
+        role: "participant",
+      },
+    });
   }
 
   // Padi-level invite: link as personal bot on the creator's padi membership

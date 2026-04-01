@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bot, Send as SendIcon, Ticket, MessageSquare, Trash2 } from "lucide-react";
+import { ArrowLeft, Bot, Send as SendIcon, Ticket, MessageSquare, Trash2, AlertCircle } from "lucide-react";
 import { roomsApi } from "../api/rooms.ts";
 import { messagesApi } from "../api/messages.ts";
 import { transitionsApi } from "../api/transitions.ts";
@@ -34,6 +34,8 @@ export function RoomPage() {
   const [showDispatch, setShowDispatch] = useState(false);
   const [activeTab, setActiveTab] = useState<"chat" | "tickets">("tickets");
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [dispatchErrors, setDispatchErrors] = useState<{ botName: string; error: string; id: number }[]>([]);
+  const errorIdRef = useRef(0);
 
   const { data: roomData } = useQuery({
     queryKey: ["room", roomId],
@@ -60,6 +62,14 @@ export function RoomPage() {
       if (event.type === "message.new" && event.roomId === roomId) {
         setLocalMessages((prev) => [...prev, event.message]);
         void queryClient.invalidateQueries({ queryKey: ["messages", roomId] });
+      }
+      if ((event.type === "member.joined" || event.type === "member.left") && event.roomId === roomId) {
+        void queryClient.invalidateQueries({ queryKey: ["room", roomId] });
+      }
+      if (event.type === "dispatch.failed" && event.roomId === roomId) {
+        const id = ++errorIdRef.current;
+        setDispatchErrors((prev) => [...prev, { botName: String(event.botDisplayName), error: String(event.error), id }]);
+        setTimeout(() => setDispatchErrors((prev) => prev.filter((e) => e.id !== id)), 6000);
       }
     });
     return () => {
@@ -299,6 +309,25 @@ export function RoomPage() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Dispatch failure toasts */}
+      {dispatchErrors.length > 0 && (
+        <div className="fixed bottom-4 right-4 flex flex-col gap-2 z-50 max-w-xs">
+          {dispatchErrors.map((e) => (
+            <div
+              key={e.id}
+              className="flex items-start gap-2 px-3 py-2.5 bg-red-50 border border-red-200 rounded-xl shadow text-sm"
+            >
+              <AlertCircle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+              <div>
+                <span className="font-medium text-red-800">@{e.botName}</span>
+                <span className="text-red-600"> didn't receive the message</span>
+                <p className="text-[10px] text-red-400 mt-0.5 truncate">{e.error}</p>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

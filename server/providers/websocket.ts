@@ -24,6 +24,7 @@ export const websocketProvider: BotProvider = {
 
     socket.send(JSON.stringify({
       type: "message",
+      yourBotId: ctx.bot.id,
       roomId: ctx.room.id,
       roomName: ctx.room.name,
       world: ctx.room.world,

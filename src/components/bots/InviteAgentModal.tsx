@@ -78,6 +78,16 @@ Room: "${roomName ?? "this room"}"${padiName ? `\nPadi: ${padiName}` : ""}
 Server: ${serverUrl}
 Invite token (expires in 10 minutes): ${inviteToken}
 
+== IMPORTANT CONTEXT ==
+The REST API and WebSocket push use different field names for the same data. Normalise everything before processing.
+- REST API returns {"messages": [...]} — unwrap the array correctly.
+- REST field names: id, authorUserId, authorBotId
+- WebSocket field names: messageId, authorBotId (no authorUserId field)
+- Both share: authorType, authorDisplayName, body, createdAt
+- Human messages have authorType === "human" and an authorUserId
+- Bot messages have authorType === "bot" and an authorBotId
+- Always respond to @YourDisplayName as well as @yourBotName — people may use either
+
 == STEP 1: ACCEPT THE INVITE ==
 POST ${serverUrl}/api/invites/accept
 Content-Type: application/json
@@ -88,51 +98,71 @@ Content-Type: application/json
   "provider": "websocket"
 }
 
-Response contains:
-- bot.apiKey — your bot key (save this, it changes each invite)
-- bot.id — your identifier
-- roomId — the room you joined
+Save from the response: bot.apiKey, bot.id, roomId.
 
 == STEP 2: CONNECT VIA WEBSOCKET ==
-Derive the WebSocket URL by replacing "https://" with "wss://" in the server URL (or "http://" with "ws://").
+Replace https:// with wss:// in the server URL.
 
 Connect to: ${wsUrl}/bot-ws?botKey={bot.apiKey}
 
 Wait for the connection confirmation:
 {"type":"connected","botId":"...","botName":"..."}
 
-The server will push messages to you as:
-{"type":"message","roomId":"...","roomName":"...","world":"middle","messageId":"...","body":"...","authorDisplayName":"...","authorType":"human","createdAt":"...","mentionedBotIds":["..."]}
+The server pushes messages as:
+{"type":"message","yourBotId":"...","roomId":"...","roomName":"...","world":"middle","messageId":"...","body":"...","authorDisplayName":"...","authorType":"human","authorBotId":null,"createdAt":"...","mentionedBotIds":["..."]}
 
-Keep this connection open. The server sends a ping every 30s — your WebSocket library will handle it automatically.
+IMPORTANT: Only connect to /bot-ws — do NOT also connect to /ws. Dual connections cause a feedback loop where you receive your own replies endlessly.
+
+Keep the connection open. The server sends a ping every 30s — handle it automatically.
+
+== STEP 2b: VERIFY YOUR KEY ==
+Confirm your API key is valid and see which rooms you're in:
+GET ${serverUrl}/api/bots/me
+X-TW-Bot-Key: {bot.apiKey}
+→ Returns: { bot: { id, displayName, status }, rooms: [...], online: true/false }
 
 == STEP 3: CATCH UP ON MISSED MESSAGES ==
-On connect (and after any reconnection), fetch messages you may have missed:
+On first connect, set since to the start of today UTC (00:00) so you don't miss earlier messages from this session.
 
-GET ${serverUrl}/api/rooms/{roomId}/messages?since={lastSeenTimestamp}
+GET ${serverUrl}/api/rooms/{roomId}/messages?since={since}
 X-TW-Bot-Key: {bot.apiKey}
 
-- "since" is an ISO timestamp — only messages newer than this are returned, oldest first
-- Initialize lastSeenTimestamp to the current time on first connect (not an old timestamp)
-- Track the latest createdAt you've seen and advance it on reconnect
-- Apply the same filtering as STEP 4: only process messages where authorType === "human"
-- Skip messages where authorBotId === bot.id (your own previous replies)
+- API returns {"messages": [...]} — unwrap correctly
+- Only process messages where authorType === "human"
+- Skip messages where authorBotId === bot.id (your own replies)
+- Advance lastSeenTimestamp to the newest createdAt seen
+- On reconnect, use the advanced timestamp as since
 
 == STEP 4: RESPOND TO @MENTIONS ==
-In Middle Ground, only respond when the message body contains @{yourName} or @all (case-insensitive).
+In Middle Ground, respond when:
+- @YourDisplayName or @yourBotName appears in the message body (case-insensitive)
+- @all appears
 In Lower Ground, respond to all human messages.
-Never respond when authorType is "bot" (avoids loops).
-Never respond to your own messages — check authorBotId !== bot.id (now included in both WebSocket events and catch-up responses).
+Never respond when authorType === "bot" or authorBotId === bot.id.
 
-== STEP 5: SEND REPLIES ==
+== STEP 5: LLM-POWERED RESPONSES ==
+Connect to your local model relay or LLM endpoint to generate replies.
+- Maintain a rolling 20-message conversation history so context carries across turns
+- Strip the @mention from the message body before sending to the LLM
+- Include the sender's display name for context
+
+== STEP 6: SEND REPLIES ==
 POST ${serverUrl}/api/rooms/{roomId}/messages
 X-TW-Bot-Key: {bot.apiKey}
 Content-Type: application/json
 
 {"body": "<your response>"}
 
-== STEP 6: KEEP RUNNING ==
-Keep the WebSocket connection open. If disconnected, reconnect immediately using the same botKey and run the catch-up step.
+Optionally, after sending a reply, acknowledge receipt on the bot-ws connection:
+{"type": "ack", "messageId": "{messageId from the received event}"}
+This updates the server dispatch log from "delivered" to "acknowledged".
+
+== STEP 7: KEEP RUNNING ==
+- Keep WebSocket open at all times
+- If disconnected, reconnect immediately using the same botKey and re-run catch-up
+- Use a venv if system Python is externally managed:
+  python3 -m venv venv && venv/bin/pip install websocket-client requests
+- Run with python -u (unbuffered) so logs flush in real time
 
 Please confirm you understand, then begin the onboarding session.`
     : "";

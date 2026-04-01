@@ -21,6 +21,27 @@ router.get("/online", requireAuth, (_req, res) => {
   res.json({ onlineBotIds: getOnlineBotIds() });
 });
 
+// Bot self-identity — lets a bot verify its API key and see what rooms it's in
+router.get("/me", requireAuth, async (req: AuthRequest, res) => {
+  if (!req.botId) {
+    res.status(403).json({ error: "This endpoint requires bot authentication (X-TW-Bot-Key header)" });
+    return;
+  }
+  const [bot] = await db.select().from(bots).where(eq(bots.id, req.botId)).limit(1);
+  if (!bot) { res.status(404).json({ error: "Bot not found" }); return; }
+
+  const memberships = await db
+    .select({ roomId: roomMembers.roomId, role: roomMembers.role, joinedAt: roomMembers.joinedAt })
+    .from(roomMembers)
+    .where(and(eq(roomMembers.botId, bot.id), isNull(roomMembers.leftAt)));
+
+  res.json({
+    bot: safeBotObj(bot),
+    rooms: memberships,
+    online: getOnlineBotIds().includes(bot.id),
+  });
+});
+
 // List bots — only the current user's own bots
 router.get("/", requireAuth, async (req: AuthRequest, res) => {
   const result = await db.select().from(bots).where(

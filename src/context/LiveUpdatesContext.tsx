@@ -12,7 +12,10 @@ type WsEvent =
   | { type: "transition"; roomId: string; transitionType: string; message?: Message }
   | { type: "ticket.created"; roomId: string; ticket: unknown }
   | { type: "ticket.updated"; roomId: string; ticket: unknown }
-  | { type: "ticket.checkout"; roomId: string; ticket: unknown };
+  | { type: "ticket.checkout"; roomId: string; ticket: unknown }
+  | { type: "member.joined"; roomId: string; member: unknown }
+  | { type: "member.left"; roomId: string; memberId: string }
+  | { type: "dispatch.failed"; roomId: string; botId: string; botDisplayName: string; messageId: string; error: string };
 
 type EventHandler = (event: WsEvent) => void;
 
@@ -62,6 +65,9 @@ export function LiveUpdatesProvider({ children }: { children: ReactNode }) {
           }
           if (data.type === "transition") {
             void queryClient.invalidateQueries({ queryKey: ["rooms"] });
+          }
+          if (data.type === "member.joined" || data.type === "member.left") {
+            void queryClient.invalidateQueries({ queryKey: ["room", data.roomId] });
           }
 
           for (const handler of handlers.current) handler(data);

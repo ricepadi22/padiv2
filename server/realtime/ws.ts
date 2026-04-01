@@ -2,9 +2,9 @@ import { createRequire } from "module";
 import { createHash } from "crypto";
 import type { Server as HttpServer } from "http";
 import jwt from "jsonwebtoken";
-import { eq } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { db } from "../db/client.js";
-import { bots } from "../db/schema/index.js";
+import { bots, botDispatchLog } from "../db/schema/index.js";
 import { registerBot, unregisterBot, getBotSocket } from "./botRegistry.js";
 
 const require = createRequire(import.meta.url);
@@ -91,8 +91,40 @@ export function setupWebSocketServer(server: HttpServer) {
             registerBot(bot.id, ws);
             ws.send(JSON.stringify({ type: "connected", botId: bot.id, botName: bot.displayName }));
 
+            // Liveness detection: terminate connections that stop responding to pings
+            let isAlive = true;
+            ws.on("pong", () => { isAlive = true; });
+
+            // Handle messages FROM the bot (e.g. ack receipts)
+            ws.on("message", (raw) => {
+              void (async () => {
+                try {
+                  const msg = JSON.parse(raw.toString()) as { type: string; messageId?: string };
+                  if (msg.type === "ack" && msg.messageId) {
+                    // Bot confirmed it received and processed a dispatched message.
+                    // status is a free-text column — "acknowledged" extends the default set.
+                    await db.update(botDispatchLog)
+                      .set({ status: "acknowledged" })
+                      .where(and(
+                        eq(botDispatchLog.messageId, msg.messageId),
+                        eq(botDispatchLog.botId, bot.id),
+                      ));
+                  }
+                } catch {
+                  // ignore malformed messages
+                }
+              })();
+            });
+
             const pingInterval = setInterval(() => {
-              if (ws.readyState === WebSocket.OPEN) ws.ping();
+              if (ws.readyState !== WebSocket.OPEN) return;
+              if (!isAlive) {
+                // No pong since last ping — connection is dead, evict from registry
+                ws.terminate();
+                return;
+              }
+              isAlive = false;
+              ws.ping();
             }, 30_000);
 
             ws.on("close", () => { unregisterBot(bot.id); clearInterval(pingInterval); });

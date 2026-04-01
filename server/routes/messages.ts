@@ -1,8 +1,8 @@
 import { Router } from "express";
-import { eq, and, isNull, lt, gt, desc, asc } from "drizzle-orm";
+import { eq, and, or, ne, isNull, lt, gt, desc, asc } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/client.js";
-import { messages, rooms, roomMembers } from "../db/schema/index.js";
+import { messages, rooms, roomMembers, botDispatchLog, bots } from "../db/schema/index.js";
 import { requireAuth, type AuthRequest } from "../middleware/auth.js";
 import { publishEvent } from "../realtime/ws.js";
 import { routeMessageToBots } from "../services/messageRouter.js";
@@ -26,6 +26,8 @@ router.get("/", requireAuth, async (req: AuthRequest, res) => {
         eq(messages.roomId, req.params.roomId!),
         isNull(messages.deletedAt),
         gt(messages.createdAt, new Date(since)),
+        // When a bot polls ?since=, exclude its own messages to prevent self-reply loops
+        req.botId ? or(isNull(messages.authorBotId), ne(messages.authorBotId, req.botId)) : undefined,
       )
     ).orderBy(asc(messages.createdAt)).limit(limit);
 
@@ -92,7 +94,12 @@ router.post("/", requireAuth, async (req: AuthRequest, res) => {
   publishEvent(room.id, { type: "message.new", message });
 
   // Route to bots in this room (fire-and-forget)
-  void routeMessageToBots(message!, room);
+  // In Middle World, only route human messages — bot replies must not re-enter routing
+  // (prevents feedback loops when an agent also subscribes to the /ws broadcast)
+  const isHumanPost = !!req.user;
+  if (isHumanPost || room.world === "worker") {
+    void routeMessageToBots(message!, room);
+  }
 
   res.status(201).json({ message });
 });
@@ -133,6 +140,37 @@ router.delete("/:messageId", requireAuth, async (req: AuthRequest, res) => {
   await db.update(messages).set({ deletedAt: new Date() }).where(eq(messages.id, msg.id));
   publishEvent(msg.roomId, { type: "message.deleted", messageId: msg.id });
   res.json({ ok: true });
+});
+
+// Dispatch log for debugging — shows which bots received (or failed to receive) messages in this room
+router.get("/dispatch-log", requireAuth, async (req: AuthRequest, res) => {
+  const botId = req.query.botId as string | undefined;
+  const limit = Math.min(Number(req.query.limit) || 20, 100);
+
+  const logs = await db
+    .select({
+      id: botDispatchLog.id,
+      messageId: botDispatchLog.messageId,
+      botId: botDispatchLog.botId,
+      botDisplayName: bots.displayName,
+      provider: botDispatchLog.provider,
+      status: botDispatchLog.status,
+      lastError: botDispatchLog.lastError,
+      attemptCount: botDispatchLog.attemptCount,
+      dispatchedAt: botDispatchLog.dispatchedAt,
+      createdAt: botDispatchLog.createdAt,
+    })
+    .from(botDispatchLog)
+    .innerJoin(messages, eq(botDispatchLog.messageId, messages.id))
+    .innerJoin(bots, eq(botDispatchLog.botId, bots.id))
+    .where(and(
+      eq(messages.roomId, req.params.roomId!),
+      botId ? eq(botDispatchLog.botId, botId) : undefined,
+    ))
+    .orderBy(desc(botDispatchLog.createdAt))
+    .limit(limit);
+
+  res.json({ logs });
 });
 
 export default router;
